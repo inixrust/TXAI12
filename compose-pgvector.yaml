@@ -1,0 +1,24 @@
+# PostgreSQL + pgvector untuk indeks TX-AI12 (L6) dan checkpointer LangGraph (L10).
+# Satu basis data, dua kegunaan — satu lagi hal yang tidak perlu dicadangkan
+# dan dipantau secara terpisah.
+#
+#   docker compose -f compose-pgvector.yaml up -d
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pg-txai12
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rahasia_lab
+      POSTGRES_DB: korpus
+    ports:
+      - "6024:5432"          # 6024 agar tidak bentrok dengan Postgres lain
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d korpus"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

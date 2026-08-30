@@ -1,0 +1,28 @@
+# Oracle Database Free 23ai untuk lab basis data (L8, L9).
+# Penyiapan pertama makan 5-10 menit. Tunggu sampai healthcheck hijau:
+#
+#   docker compose -f compose-oracle.yaml up -d
+#   docker compose -f compose-oracle.yaml logs -f oracle
+services:
+  oracle:
+    image: container-registry.oracle.com/database/free:latest
+    container_name: oracle-txai12
+    environment:
+      ORACLE_PWD: Rahasia_Lab_2026
+    ports:
+      - "1521:1521"
+    volumes:
+      - oradata:/opt/oracle/oradata
+    healthcheck:
+      # healthcheck.sh TIDAK ADA di image 26ai — perintah bawaan yang lazim
+      # dikutip di banyak contoh justru menghasilkan "unhealthy" permanen
+      # dengan exit 127 (command not found), padahal basis datanya sehat.
+      # Peserta melihat container "unhealthy" dan mengira lab-nya rusak.
+      # tnsping menanyakan listener-nya langsung dan ada di semua versi.
+      test: ["CMD-SHELL", "$$ORACLE_HOME/bin/tnsping FREEPDB1 > /dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  oradata:

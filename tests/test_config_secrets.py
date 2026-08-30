@@ -1,0 +1,91 @@
+"""Rahasia harus datang dari environment, dan gagal-tertutup di produksi.
+
+Modul config dievaluasi SAAT IMPOR, jadi tiap kasus menjalankan subprocess
+dengan environment berbeda. Itu lebih lambat daripada memanggil fungsi, tapi
+ia menguji hal yang sebenarnya penting: apa yang terjadi saat proses start
+di lingkungan tertentu — bukan perilaku fungsi yang dipanggil belakangan.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+LAB = Path(__file__).resolve().parent.parent
+CEK = "from ragcore import config; print('OK', config.PG_URL_APP.rsplit('@',1)[-1])"
+
+
+def _impor(env_tambahan: dict) -> subprocess.CompletedProcess:
+    env = {**os.environ, "PYTHONPATH": str(LAB / "src")}
+    # bersihkan agar tiap kasus berangkat dari keadaan yang sama
+    for k in ("RAG_ENV", "PG_URL", "PG_URL_DIRECT", "PG_URL_APP", "ORACLE_CONNECTION"):
+        env.pop(k, None)
+    env.update(env_tambahan)
+    return subprocess.run([sys.executable, "-c", CEK], cwd=LAB, env=env,
+                          capture_output=True, text=True, timeout=60)
+
+
+def test_lab_jalan_tanpa_setup():
+    """Zero-setup adalah janji README — harus tetap ditepati."""
+    r = _impor({})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "OK" in r.stdout
+
+
+def test_produksi_tanpa_env_gagal_saat_impor():
+    r = _impor({"RAG_ENV": "production"})
+    assert r.returncode != 0, "produksi tanpa kredensial seharusnya gagal"
+    assert "RAG_ENV=production" in r.stderr
+    assert "PG_URL" in r.stderr
+
+
+def test_produksi_dengan_env_jalan():
+    real = "postgresql+psycopg://u:S3cr3t@db.prod:5432/x"
+    r = _impor({
+        "RAG_ENV": "production",
+        "PG_URL": real, "PG_URL_DIRECT": "postgresql://u:S3cr3t@db.prod:5432/x",
+        "PG_URL_APP": real, "ORACLE_CONNECTION": "u/S3cr3t@ora.prod:1521/X",
+        # Produksi mewajibkan rahasia penanda-tangan sesi juga - default lab
+        # yang diketahui umum bisa dipakai memalsukan sesi.
+        "SESSION_SECRET": "prod-session-secret-abc123",
+    })
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "db.prod" in r.stdout
+
+
+def test_produksi_tanpa_session_secret_gagal():
+    """DB lengkap tapi SESSION_SECRET kosong -> tetap gagal di produksi.
+
+    Rahasia penanda-tangan sesi adalah kredensial juga: tanpa itu, token sesi
+    ditandatangani dengan default yang ada di kode -> sesi bisa dipalsukan.
+    """
+    real = "postgresql+psycopg://u:S3cr3t@db.prod:5432/x"
+    r = _impor({
+        "RAG_ENV": "production",
+        "PG_URL": real, "PG_URL_DIRECT": "postgresql://u:S3cr3t@db.prod:5432/x",
+        "PG_URL_APP": real, "ORACLE_CONNECTION": "u/S3cr3t@ora.prod:1521/X",
+    })
+    assert r.returncode != 0, "produksi tanpa SESSION_SECRET seharusnya gagal"
+    assert "SESSION_SECRET" in r.stderr
+
+
+@pytest.mark.parametrize("url", [
+    "postgresql+psycopg://rag_app:rahasia_app@db.internal:5432/korpus",
+    "postgresql+psycopg://rag_app:rahasia_app@10.20.30.40:5432/korpus",
+])
+def test_sandi_demo_di_host_non_lokal_ditolak(url):
+    """Berlaku di SEMUA mode: sandi contoh + host sungguhan = kebocoran."""
+    r = _impor({"PG_URL_APP": url})
+    assert r.returncode != 0, f"'{url}' seharusnya ditolak"
+    assert "non-lokal" in r.stderr
+
+
+def test_host_lokal_dengan_sandi_demo_diterima():
+    """localhost dan nama layanan compose bukan kebocoran."""
+    for host in ("localhost", "127.0.0.1", "db", "postgres"):
+        url = f"postgresql+psycopg://rag_app:rahasia_app@{host}:5432/korpus"
+        r = _impor({"PG_URL_APP": url})
+        assert r.returncode == 0, f"host lokal '{host}' seharusnya diterima: {r.stderr[-300:]}"

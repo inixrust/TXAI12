@@ -1,0 +1,44 @@
+name: CI
+
+# Menjalankan pemeriksaan yang sama dengan scripts/check.py, otomatis di tiap
+# push dan pull request. Dua hal yang SENGAJA tidak dijalankan di sini:
+#
+#   - Tes bertanda `lambat` (butuh Ollama, Postgres, Oracle/MCP hidup). CI
+#     tidak punya layanan itu; tes cepat sudah menangkap kelas cacat yang
+#     paling sering lolos - lihat komentar di tests/test_kontrak.py.
+#   - Evaluasi mutu (evaluate/evaluate_hybrid). Itu pengukuran, bukan gerbang
+#     benar/salah, dan hasilnya goyah antar-run; menjadikannya syarat merge
+#     akan menggagalkan build karena kebisingan model, bukan karena kode.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Ruff berdiri sendiri - tidak perlu memasang dependensi proyek yang
+      # berat (torch dkk) hanya untuk memeriksa gaya dan F821.
+      - run: pip install ruff
+      - run: ruff check src tests apps
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      # STORAGE=chroma: tes cepat tidak menyentuh Postgres, tapi impor config
+      # membaca nilai ini. chroma adalah bawaan yang tidak menuntut layanan.
+      - env:
+          PYTHONPATH: src
+          STORAGE: chroma
+        run: pytest tests -q -m "not lambat"

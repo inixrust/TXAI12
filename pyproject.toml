@@ -1,0 +1,74 @@
+[project]
+name = "ragcore"
+version = "0.1.0"
+description = "Lab TX-AI12 — Advanced RAG"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------- ruff
+#
+# Pemisahan yang disengaja: sebagian aturan MENGGAGALKAN, sisanya sekadar
+# saran. Linter yang setiap kali menyala merah karena hal kosmetik akan
+# berhenti dibaca, dan aturan yang benar-benar penting ikut terabaikan.
+#
+# Yang masuk daftar wajib di bawah dipilih karena satu alasan: masing-masing
+# pernah menangkap cacat NYATA di lab ini, bukan karena rapi.
+[tool.ruff]
+line-length = 96
+target-version = "py311"
+src = ["src"]
+extend-exclude = ["*.cadangan*", "src/make_documents.py", "src/make_scans.py"]
+
+# Yang DITEGAKKAN CI adalah keluarga yang menangkap CACAT NYATA. Batasnya
+# dipilih dari pengalaman repo ini: F (F821/F822/F401) berkali-kali menangkap
+# bug yang lolos impor dan compileall; E/W/I/UP/B ikut karena murah dan solid.
+#
+# Yang SENGAJA TIDAK ditegakkan, dengan alasannya:
+#   BLE  blind-except  - dipakai sebagai GAYA di sini: probe layanan opsional
+#                        yang gagal-aman, masing-masing beralasan tertulis.
+#                        Yang berbahaya (menelan NameError di worker) sudah
+#                        diperbaiki; sisanya disengaja.
+#   SIM  simplify      - sering menukar kejelasan pengajaran dengan keringkasan
+#                        (mis. staged-guard lebih terbaca daripada satu ekspresi).
+#   RUF  ruff-specific - RUF001/003 salah menandai tanda kutip/strip Indonesia
+#                        sebagai "ambigu"; positif palsu pada prosa non-Inggris.
+#   DTZ  datetime-tz   - lab memakai waktu naive dengan sengaja.
+# Advisory ini tetap bisa dijalankan manual (`ruff check --select BLE,SIM`),
+# hanya tidak menggagalkan build.
+[tool.ruff.lint]
+select = [
+    "E", "W",     # pycodestyle
+    "F",          # pyflakes  — F821/F822/F401 ada di sini
+    "I",          # urutan impor
+    "UP",         # sintaks usang
+    "B",          # bugbear
+]
+ignore = [
+    "E501",       # panjang baris diurus formatter
+    "B008",       # panggilan di argumen bawaan — dipakai sengaja di beberapa tool
+]
+
+# Prompt dan teks yang dilihat peserta memang panjang dan berbahasa Indonesia.
+[tool.ruff.lint.per-file-ignores]
+"src/ragcore/config.py" = ["E501"]
+"src/ragcore/agent/tools_hybrid.py" = ["E501"]
+"src/ragcore/retrieval/self_query.py" = ["E501"]  # tabel contoh di prompt
+"__init__.py" = ["F401"]   # re-export disengaja; dijaga lewat __all__
+
+[tool.ruff.lint.isort]
+known-first-party = ["ragcore"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+markers = [
+    "lambat: butuh model/basis data hidup — dilewati di CI cepat",
+]

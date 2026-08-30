@@ -1,0 +1,59 @@
+# Paket untuk lab TX-AI12 — Advanced RAG
+#
+#   pip install -r requirements.txt
+#
+# Versi sengaja tidak dikunci ketat agar tetap bisa dipasang seiring waktu.
+# Sebelum mengajar, jalankan `pip freeze > versi-terpakai.txt` dan simpan.
+
+# --- dasar, diwarisi dari TX-AI11 ---------------------------------------
+langchain>=0.3
+langchain-core>=0.3
+langchain-text-splitters>=0.3
+langchain-ollama>=0.2
+langchain-chroma>=0.2
+langchain-community>=0.3
+pypdf>=5.0
+rank_bm25>=0.2
+
+# --- Hari 1: ekstraksi VLM ----------------------------------------------
+# pymupdf merender halaman PDF menjadi gambar. Pillow dipakai make_scans.py
+# dan jalur OCR pembanding.
+pymupdf>=1.24
+pillow>=10.0
+
+# --- Hari 2: PostgreSQL + pgvector --------------------------------------
+# PGVector sudah usang; penggantinya PGVectorStore di langchain-postgres.
+langchain-postgres>=0.0.13
+psycopg[binary]>=3.1
+
+# --- Hari 3: MCP dan LangGraph ------------------------------------------
+# psutil dipakai membersihkan server MCP yang tertinggal hidup setelah
+# evaluasi dihentikan paksa. Tanpa itu, tiap Ctrl-C meninggalkan JVM ~1,4 GB
+# dan angka evaluasi berikutnya memburuk tanpa sebab yang terlihat.
+psutil>=5.9
+langchain-mcp-adapters>=0.1
+langgraph>=0.2
+langgraph-checkpoint-postgres>=2.0
+
+# --- Hari 4: observability ----------------------------------------------
+langfuse>=3.0
+
+# --- opsional ------------------------------------------------------------
+# Reranker (TX-AI11 modul B4). Berat untuk RAM 8 GB — boleh dilewati.
+sentence-transformers>=3.0
+
+# Antarmuka
+streamlit>=1.40
+
+# Lapis 2 pemeriksaan mutu (L4): OCR pembanding. Butuh Tesseract terpasang
+# di sistem BESERTA data bahasa Indonesia (ind). Tanpa ini lapis 2 dilewati
+# sendiri dan lapis 1 tetap berjalan.
+pytesseract>=0.3.10
+
+# --- adapter HTTP (opsional) ---------------------------------------------
+# API Starlette di rag_lab12/api/ berjalan di atas lapisan application yang
+# sama dengan CLI dan Streamlit. Starlette + uvicorn biasanya SUDAH ikut
+# terpasang lewat dependensi lain; disebut di sini supaya jelas ia dipakai.
+#   STORAGE=pgvector uvicorn src.serve:app
+starlette
+uvicorn

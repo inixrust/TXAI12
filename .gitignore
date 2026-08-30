@@ -1,0 +1,20 @@
+hasil-evaluasi.json
+
+# setelan lokal per mesin
+.env
+
+# artefak Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# artefak runtime lab (dibuat ulang, tak perlu di-track)
+chroma_db/
+incoming_documents/
+*.vlm.txt
+evaluation-result.json
+evaluation-history.json
