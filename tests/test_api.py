@@ -207,3 +207,11 @@ def test_upload_unit_dari_user_bukan_request():
     assert body["unit"] == REGISTRY[nip].unit
     assert ing.seen["uploader"] is REGISTRY[nip]
     assert ing.seen["classification"] == "umum"
+
+
+def test_body_json_bukan_objek_ditolak():
+    """JSON valid tapi bukan objek (array/string) -> 400, bukan 500."""
+    client, _, _, _ing = _client()
+    for bad in ([1], "hai"):
+        r = client.post("/ask", json=bad, headers=_valid_auth())
+        assert r.status_code == 400, f"{bad!r} seharusnya 400"

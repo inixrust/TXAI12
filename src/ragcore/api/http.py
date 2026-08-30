@@ -98,7 +98,9 @@ def create_api(answer_service: Any, agent_service: Any,
             body = await request.json()
         except Exception:
             return _bad_request("body harus JSON")
-        question = (body or {}).get("question")
+        if not isinstance(body, dict):
+            return _bad_request("body harus objek JSON")   # [1], "hi" -> 400
+        question = body.get("question")
         if not question:
             return _bad_request("field 'question' wajib diisi")
 
@@ -129,7 +131,9 @@ def create_api(answer_service: Any, agent_service: Any,
             body = await request.json()
         except Exception:
             return _bad_request("body harus JSON")
-        question = (body or {}).get("question")
+        if not isinstance(body, dict):
+            return _bad_request("body harus objek JSON")   # [1], "hi" -> 400
+        question = body.get("question")
         if not question:
             return _bad_request("field 'question' wajib diisi")
 

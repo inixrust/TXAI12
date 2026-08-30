@@ -58,3 +58,16 @@ def test_sumber_pindaian_belum_verifikasi_ditahan():
 
 def test_hold_reason_menyebut_kepatuhan():
     assert "kepatuhan" in _hold_reason({"judgment": True})
+
+
+def test_requester_fail_closed_nip_asing():
+    """NIP kosong = operator (None/pemilik); NIP TERISI tapi tak dikenal ->
+    PUBLIC (umum saja), BUKAN None yang membuka akses pemilik kebal-RLS."""
+    from ragcore.domain.users import PUBLIC, REGISTRY
+    from ragcore.flow.production import _requester
+
+    nip = next(iter(REGISTRY))
+    assert _requester({"nip": nip}) is REGISTRY[nip]
+    assert _requester({"nip": ""}) is None
+    assert _requester({}) is None
+    assert _requester({"nip": "NCS-XXXX-asing"}) is PUBLIC

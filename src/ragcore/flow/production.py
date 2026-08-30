@@ -63,9 +63,19 @@ def open_checkpointer():
 # ----------------------------------------------------------------- simpul
 
 def _requester(state: State):
-    """User pemohon dari NIP di state - untuk RLS retrieval DAN atribusi jejak."""
+    """User pemohon dari NIP di state - untuk RLS retrieval DAN atribusi jejak.
+
+    FAIL-CLOSED untuk NIP TAK DIKENAL. NIP kosong = konteks operator -> None
+    (sambungan pemilik, seperti connection_for(None)). Tapi NIP yang TERISI
+    namun tak ada di REGISTRY (mis. identitas basi/typo) TIDAK boleh jatuh ke
+    None - itu memberi akses pemilik yang kebal RLS (fail-open). Ia
+    diperlakukan sebagai PUBLIC: umum saja.
+    """
     from ragcore.domain import users as P
-    return P.REGISTRY.get(state.get("nip") or "")
+    nip = (state.get("nip") or "").strip()
+    if not nip:
+        return None                      # operator/maintenance, tanpa identitas
+    return P.REGISTRY.get(nip) or P.PUBLIC   # NIP asing -> umum, BUKAN pemilik
 
 
 def _session_of(run_config: dict | None) -> str | None:
@@ -89,7 +99,10 @@ def n_rewrite(state: State, config: dict | None = None) -> dict:
         return {"self_question": state["question"]}
 
 
-    conversation = "\n".join(f"{p['peran']}: {p['isi']}" for p in history)
+    # Bentuk giliran bisa berbeda saat alur dilanjutkan dari keadaan lama;
+    # .get + saring dict mencegah satu entri asing menjatuhkan simpul pertama.
+    conversation = "\n".join(f"{p.get('peran', '?')}: {p.get('isi', '')}"
+                             for p in history if isinstance(p, dict))
     prompt = (
         f"Riwayat percakapan:\n{conversation}\n\n"
         f"Pertanyaan lanjutan: {state['question']}\n\n"

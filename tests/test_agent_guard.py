@@ -91,3 +91,45 @@ def test_validasi_select_only():
     assert not _is_safe_select("SELECT 1 FROM dual; DROP TABLE ncs.karyawan")
     assert not _is_safe_select("EXEC ncs.rag_scope.set_identity('NCS-0001')")
     assert not _is_safe_select("")
+
+
+# ---------------------------------------------------- reconnect + re-scope
+
+class _FlakyTool:
+    """Tool DB yang sesinya 'terputus' pada SELECT pertama, pulih di kedua."""
+    name = "sql_run"
+    description = "jalankan SQL"
+    args_schema = _SqlArgs
+
+    def __init__(self):
+        self.sqls: list[str] = []
+        self.select_calls = 0
+
+    async def ainvoke(self, kwargs):
+        sql = kwargs["sql"]
+        self.sqls.append(sql)
+        if sql.strip().lower().startswith("begin"):
+            return "ok"                         # panggilan setel-scope
+        self.select_calls += 1
+        return "Connection not established" if self.select_calls == 1 else "HASIL"
+
+
+def test_reconnect_memasang_ulang_scope():
+    """Bila sesi putus di antara setel-scope dan SELECT, guard menyambung ulang
+    LALU memasang scope lagi - bukan menjalankan ulang SELECT dengan rag_ctx
+    kosong (yang akan balik 0 baris diam-diam)."""
+    tool = _FlakyTool()
+    calls = {"connect": 0}
+
+    async def fake_connect():
+        calls["connect"] += 1
+
+    guarded = guard_db_access(tool, connect=fake_connect)
+    ACTIVE_USER.set(REGISTRY[next(iter(REGISTRY))])
+    out = asyncio.run(guarded.ainvoke({"sql": "SELECT unit FROM ncs.v_karyawan"}))
+
+    assert out == "HASIL"
+    assert calls["connect"] == 1                 # menyambung ulang sekali
+    # scope dipasang DUA kali - sebelum tiap percobaan SELECT
+    assert sum(s.lower().startswith("begin") for s in tool.sqls) == 2
+    assert tool.select_calls == 2

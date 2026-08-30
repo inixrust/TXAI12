@@ -333,7 +333,7 @@ def _scope_sql(person) -> str:
     return f"BEGIN ncs.rag_scope.set_identity('{nip}'); END;"
 
 
-def guard_db_access(tool):
+def guard_db_access(tool, connect=None):
     """Bungkus tool basis data: TOLAK anonim + SARING BARIS per unit pemohon.
 
     PENEGAKAN, BUKAN PROMPT. Tool dokumen (search_rules) menurunkan PUBLIC ke
@@ -346,12 +346,24 @@ def guard_db_access(tool):
          dan operator melihat semua. SQL model divalidasi SELECT-tunggal supaya
          ia tak bisa mengganti konteks itu sendiri.
 
-    Endpoint /agent/ask menolak PUBLIC lebih dulu (belt); ini lapisan kedua
-    (suspenders) yang berlaku untuk pemanggil mana pun.
+    RECONNECT + SCOPE DISATUKAN DI SINI (menggantikan wrap_reconnect untuk tool
+    ini). Kalau sesi diputus profil sumber daya di antara setel-scope dan
+    SELECT, menyambung ulang saja TIDAK cukup: sesi baru punya rag_ctx KOSONG,
+    VPD memulangkan '1=0', dan query sah balik NOL BARIS diam-diam - persis
+    kegagalan 'tool berhasil, jawaban salah' yang dijaga modul ini. Maka saat
+    sesi terputus, scope DIPASANG ULANG lalu SELECT diulang, sebagai satu
+    kesatuan. `connect=None` (mis. di tes) melewati pemulihan itu.
+
+    Endpoint /agent/ask menolak PUBLIC lebih dulu (belt); ini lapisan kedua.
     """
     from langchain_core.tools import StructuredTool
 
     from ragcore.domain.users import PUBLIC
+
+    async def _scope_then_query(person, kwargs):
+        # Setel penyaring-baris dari identitas terverifikasi, LALU jalankan SQL.
+        await tool.ainvoke({"sql": _scope_sql(person)})
+        return await tool.ainvoke(kwargs)
 
     async def _run(**kwargs):
         # HANYA PUBLIC yang ditolak, BUKAN None: None = operator/maintenance
@@ -366,9 +378,11 @@ def guard_db_access(tool):
             return ("DITOLAK: hanya SATU perintah SELECT yang dijalankan di "
                     "jalur ini - blok PL/SQL, banyak-pernyataan, atau perintah "
                     "selain SELECT tidak diizinkan.")
-        # Setel penyaring-baris dari identitas terverifikasi, LALU jalankan SQL.
-        await tool.ainvoke({"sql": _scope_sql(person)})
-        return await tool.ainvoke(kwargs)
+        result = await _scope_then_query(person, kwargs)
+        if connect is not None and session_lost(mcp_text(result)):
+            await connect()
+            result = await _scope_then_query(person, kwargs)   # scope ULANG
+        return result
 
     return StructuredTool(
         name=tool.name,
@@ -427,10 +441,11 @@ async def database_session(quiet: bool = True):
                       "--simpan-sambungan")
         # Tool yang dipakai menjawab dibungkus agar tahan sesi yang
         # diputus profil sumber daya. Lihat wrap_reconnect().
-        # Tool DB dibungkus DUA kali: tahan sesi terputus (wrap_reconnect) DAN
-        # tolak identitas anonim (guard_db_access). Urutannya: penjaga di luar,
-        # jadi identitas diperiksa SEBELUM satu pun SQL dijalankan.
-        yield [guard_db_access(wrap_reconnect(a, connect))
+        # Tool DB dibungkus guard_db_access, yang kini SEKALIGUS menangani
+        # penyambungan ulang (reconnect + pasang-ulang scope + SELECT sebagai
+        # satu kesatuan) - menggantikan wrap_reconnect untuk tool ini supaya
+        # penyaring-baris tak hilang saat sesi diputus di tengah.
+        yield [guard_db_access(a, connect)
                if a.name in USED_MCP_TOOL else a
                for a in tool]
 
