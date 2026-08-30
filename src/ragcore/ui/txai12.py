@@ -380,6 +380,19 @@ def _answer(query_text: str, k: int, source_show: bool, filters_active: bool) ->
 
 # ------------------------------------------------------ alur LangGraph (L10)
 
+def _screen_answer(text: str | None) -> str:
+    """Penjaga keluaran OWASP LLM07 - sama seperti jalur Tanya (_answer).
+
+    Alur Konsultasi dulu merender answer_text graf LANGSUNG, jadi kebocoran
+    prompt sistem lolos ke kartu tinjauan MAUPUN hasil akhir. Screen di sini
+    menutupnya. Graf SELALU melakukan retrieval (n_search_documents), maka
+    sinyal 'search_rules' diberikan supaya cek sitasi-tanpa-retrieval tak
+    salah-tolak sitasi yang sah - yang tersisa hanya penjaga kebocoran prompt.
+    """
+    from ..domain.guard import screen
+    return screen(text or "", called_tool=("search_rules",))
+
+
 def _run_flow(inputs, thread_id: str):
     """Jalankan/lanjutkan graf pada thread_id, kembalikan state akhir.
 
@@ -459,10 +472,13 @@ def _flow_panel(person) -> None:
                         {"question": q, "nip": getattr(person, "nip", "")}, tid)
                 itr = res.get("__interrupt__")
                 if itr:
-                    st.session_state.alur_tunda = dict(itr[0].value)
+                    payload = dict(itr[0].value)
+                    payload["answer_text"] = _screen_answer(
+                        payload.get("answer_text"))
+                    st.session_state.alur_tunda = payload
                 else:
                     st.session_state.alur_hasil = {
-                        "answer_text": res.get("answer_text"),
+                        "answer_text": _screen_answer(res.get("answer_text")),
                         "status": res.get("status") or "lolos"}
                 st.rerun()
         st.caption(
@@ -497,7 +513,7 @@ def _flow_panel(person) -> None:
             res = _run_flow(Command(resume=keputusan),
                             st.session_state.alur_thread)
         st.session_state.alur_hasil = {
-            "answer_text": res.get("answer_text"),
+            "answer_text": _screen_answer(res.get("answer_text")),
             "status": res.get("status"), "note": res.get("note")}
         st.session_state.pop("alur_tunda", None)
         audit.record("tinjau-alur", person, outcome=keputusan["action"],

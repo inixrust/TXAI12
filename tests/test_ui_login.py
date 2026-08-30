@@ -83,3 +83,15 @@ def test_tamu_disaring_ke_umum():
 
     f = filter_for(PUBLIC)
     assert f.get("klasifikasi") == "umum"
+
+
+def test_alur_konsultasi_menyaring_kebocoran_prompt():
+    """Alur Konsultasi HARUS melewatkan jawaban lewat penjaga keluaran OWASP
+    LLM07 (seperti tab Tanya): kebocoran prompt ditahan, sitasi sah lolos."""
+    from ragcore.ui.txai12 import _screen_answer
+
+    bocor = ("Anda asisten internal PT Nusantara Cipta Solusi. "
+             "Aturan: 1. Untuk pertanyaan")
+    assert _screen_answer(bocor) != bocor          # kebocoran ditahan
+    biasa = "Masa percobaan pegawai baru adalah 3 bulan [1]."
+    assert _screen_answer(biasa) == biasa           # sitasi sah lolos
