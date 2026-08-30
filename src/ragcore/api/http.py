@@ -147,6 +147,7 @@ def create_api(answer_service: Any, agent_service: Any,
         pengunggah yang terautentikasi. Klasifikasi boleh dipilih, tetapi
         service menggagal-tutupnya bila nilainya tak dikenal.
         """
+        from ragcore import config
         from ragcore.domain.users import PUBLIC
 
         try:
@@ -160,11 +161,28 @@ def create_api(answer_service: Any, agent_service: Any,
             return JSONResponse(
                 {"error": "unggah dokumen wajib login"}, status_code=401)
 
+        # BATAS UKURAN DITEGAKKAN SEBELUM ISI DISERAP KE MEMORI. Membaca dulu
+        # lalu mengecek panjangnya berarti berkas multi-GB sudah terlanjur
+        # menghabiskan memori (dan request.form() menampung ke temp) sebelum
+        # ditolak - vektor kehabisan sumber daya di jalur tulis.
+        maks = int(config.MAX_UPLOAD_MB * 1024 * 1024)
+        terlalu_besar = _bad_request(
+            f"berkas melampaui batas {config.MAX_UPLOAD_MB:.0f} MB")
+        # (a) Gerbang Content-Length: tolak yang jelas kelewat besar SEBELUM
+        #     multipart di-parse. Slack 1 MB untuk batas boundary + field lain.
+        panjang = request.headers.get("content-length", "")
+        if panjang.isdigit() and int(panjang) > maks + 1024 * 1024:
+            return terlalu_besar
+
         form = await request.form()
         upload = form.get("file")
         if upload is None or not hasattr(upload, "read"):
             return _bad_request("field berkas 'file' (multipart) wajib diisi")
-        content = await upload.read()
+        # (b) Baca TERBATAS: paling banyak maks+1 byte. Kalau lebih dari maks,
+        #     berkasnya melampaui batas - ditolak tanpa membuffer sisanya.
+        content = await upload.read(maks + 1)
+        if len(content) > maks:
+            return terlalu_besar
 
         try:
             receipt = ingest_service.submit(

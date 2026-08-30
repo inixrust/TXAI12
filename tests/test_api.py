@@ -215,3 +215,17 @@ def test_body_json_bukan_objek_ditolak():
     for bad in ([1], "hai"):
         r = client.post("/ask", json=bad, headers=_valid_auth())
         assert r.status_code == 400, f"{bad!r} seharusnya 400"
+
+
+def test_upload_terlalu_besar_ditolak_sebelum_diproses(monkeypatch):
+    """Berkas melampaui batas -> 400 dan service TIDAK dipanggil. Batas
+    ditegakkan lewat baca-terbatas, bukan setelah seluruh isi masuk memori."""
+    from ragcore import config
+
+    monkeypatch.setattr(config, "MAX_UPLOAD_MB", 0.001)   # ~1 KB
+    client, _, _, ing = _client()
+    r = client.post("/documents", files={"file": ("besar.pdf", b"x" * 5000)},
+                    headers=_valid_auth())
+    assert r.status_code == 400
+    assert "melampaui" in r.json()["error"]
+    assert ing.seen is None            # tak diproses
