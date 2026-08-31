@@ -1,0 +1,5 @@
+# Skrip shell & config yang dijalankan di dalam container Linux HARUS berakhiran
+# LF, apa pun OS pengembang - CRLF membuat `#!/usr/bin/env sh` gagal di Linux.
+*.sh   text eol=lf
+*.hcl  text eol=lf
+Caddyfile text eol=lf

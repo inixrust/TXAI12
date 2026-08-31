@@ -1,0 +1,57 @@
+# Kerangka infra produksi TX-AI12 (on-prem, single-node) di atas Docker.
+# Melengkapi compose-oracle.yaml + compose-pgvector.yaml + stack Langfuse yang
+# sudah ada. INI KERANGKA - baca infra/README.md dulu untuk langkah bootstrap
+# (init & unseal OpenBao, sertifikat, wiring app) dan batasannya.
+#
+#   docker compose -f infra/compose-infra.yaml up -d
+name: txai12-infra
+
+services:
+  # --- Secret manager ------------------------------------------------------
+  openbao:
+    image: openbao/openbao:latest
+    command: server -config=/openbao/config/config.hcl
+    cap_add: [IPC_LOCK]          # cegah rahasia ter-swap ke disk
+    volumes:
+      - openbao-data:/openbao/data
+      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
+      - ./openbao/txai12-policy.hcl:/openbao/txai12-policy.hcl:ro
+    # Saat BOOTSTRAP, buka port ke host agar bisa init/unseal + jalankan
+    # bootstrap.sh, DAN agar app yang berjalan di host bisa membaca rahasia.
+    # Bila app ikut dikontainerkan (jaringan backend internal), TUTUP ini.
+    ports:
+      - "127.0.0.1:8200:8200"    # host-only, tidak menghadap internet
+    networks: [backend]
+    restart: unless-stopped
+
+  # --- Reverse proxy: satu-satunya yang menghadap keluar -------------------
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # agar Caddy menjangkau app di host
+    networks: [frontend]
+    restart: unless-stopped
+
+  # CATATAN: aplikasi (Streamlit/API) SAAT INI berjalan di HOST via venv - ia
+  # membaca OPENBAO_ADDR=http://127.0.0.1:8200 + OPENBAO_TOKEN dari bootstrap.
+  # Untuk isolasi penuh, kontainerkan app sebagai service di sini, taruh di
+  # jaringan backend (tanpa ports:), lalu Caddy -> app:8501 dan TUTUP port 8200.
+  # Mengontainerkan app butuh Dockerfile (termasuk SQLcl/Java untuk MCP Oracle)
+  # - itu langkah terpisah, lihat README.
+
+networks:
+  frontend:                     # caddy <-> luar & app
+  backend:                      # openbao <-> app
+    internal: true              # tak ada rute ke internet
+
+volumes:
+  openbao-data:
+  caddy-data:
+  caddy-config:

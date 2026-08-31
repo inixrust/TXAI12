@@ -71,14 +71,68 @@ def _guard_secret(name: str, value: str) -> str:
     return value
 
 
-def secret(name: str, lab_default: str) -> str:
-    """Ambil kredensial dari environment, dengan default HANYA untuk lab.
+# --------------------------------------------------------- OpenBao (opsional)
+#
+# Sumber rahasia PRODUKSI, menggantikan nilai plaintext di .env. OpenBao = fork
+# open-source (MPL 2.0, Linux Foundation) dari HashiCorp Vault, API-compatible -
+# sejalan dengan pilihan lab memakai perkakas FOSS yang bisa di-selfhost (lihat
+# alasan memilih Langfuse ketimbang LangSmith di tracing.py).
+#
+# Yang disetel lewat env di sini AMAN di env: alamat & token AKSES ke OpenBao,
+# BUKAN kredensial DB itu sendiri. Rahasia sebenarnya (URL DB, kunci HMAC) hidup
+# di dalam OpenBao dan diambil saat impor, sekali, lalu di-cache.
+#
+#   OPENBAO_ADDR     mis. https://openbao:8200
+#   OPENBAO_TOKEN    token app (idealnya AppRole berumur pendek)
+#   OPENBAO_KV_PATH  jalur KV v2, default 'secret/data/txai12'
+#
+# Urutan: env -> OpenBao -> (produksi: gagal / lab: default). Env tetap bisa
+# menimpa (untuk uji/darurat). OpenBao MATI tidak mematikan app - jatuh ke
+# jalur berikutnya; di produksi rahasia yang tetap kosong tetap digagalkan.
+_bao_cache: dict | None = None
 
-    Di produksi (RAG_ENV=production) default diabaikan: variabel yang tidak
-    disetel menggagalkan impor. Di lab, default dipakai tetapi ditolak bila
-    ia menunjuk host non-lokal - lihat _guard_secret().
+
+def _openbao_secrets() -> dict:
+    """Rahasia dari OpenBao KV v2, di-cache. {} bila tak dikonfigurasi/terjangkau."""
+    global _bao_cache
+    if _bao_cache is not None:
+        return _bao_cache
+    addr = os.getenv("OPENBAO_ADDR", "").strip()
+    token = os.getenv("OPENBAO_TOKEN", "").strip()
+    path = os.getenv("OPENBAO_KV_PATH", "secret/data/txai12").strip()
+    if not addr or not token:
+        _bao_cache = {}
+        return _bao_cache
+    import json
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            f"{addr.rstrip('/')}/v1/{path.lstrip('/')}",
+            headers={"X-Vault-Token": token})
+        with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310 (host dikonfigurasi operator)
+            body = json.load(r)
+        _bao_cache = (body.get("data") or {}).get("data") or {}
+    except Exception:
+        # Fail-safe: secret store mati tak boleh mematikan app. Jatuh ke env/
+        # default; produksi tetap fail-closed bila rahasianya akhirnya kosong.
+        _bao_cache = {}
+    return _bao_cache
+
+
+def _sourced(name: str) -> str:
+    """Nilai dari env (menang) atau OpenBao. '' bila tak ada di keduanya."""
+    return (os.getenv(name, "").strip()
+            or str(_openbao_secrets().get(name) or "").strip())
+
+
+def secret(name: str, lab_default: str) -> str:
+    """Ambil kredensial: env -> OpenBao -> default (hanya lab).
+
+    Di produksi (RAG_ENV=production) default diabaikan: yang tak diset di env
+    MAUPUN OpenBao menggagalkan impor. Di lab, default dipakai tetapi ditolak
+    bila ia menunjuk host non-lokal - lihat _guard_secret().
     """
-    value = os.getenv(name, "").strip()
+    value = _sourced(name)
     if value:
         return _guard_secret(name, value)
     if IS_PRODUCTION:
@@ -92,12 +146,12 @@ def secret(name: str, lab_default: str) -> str:
 def signing_secret(name: str, lab_default: str) -> str:
     """Rahasia untuk MENANDATANGANI token (mis. sesi login), bukan kredensial DB.
 
-    Sama seperti secret() dalam hal produksi WAJIB dari environment, tetapi
-    TANPA penjaga host: nilainya rahasia HMAC, bukan URL, jadi tak ada host
-    untuk diperiksa. Memakai secret() di sini akan salah - ia mencoba mengurai
-    host dari sebuah rahasia acak.
+    Sama seperti secret() dalam hal produksi WAJIB dari environment/OpenBao,
+    tetapi TANPA penjaga host: nilainya rahasia HMAC, bukan URL, jadi tak ada
+    host untuk diperiksa. Memakai secret() di sini akan salah - ia mencoba
+    mengurai host dari sebuah rahasia acak.
     """
-    value = os.getenv(name, "").strip()
+    value = _sourced(name)
     if value:
         return value
     if IS_PRODUCTION:

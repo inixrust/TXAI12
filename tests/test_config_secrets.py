@@ -89,3 +89,44 @@ def test_host_lokal_dengan_sandi_demo_diterima():
         url = f"postgresql+psycopg://rag_app:rahasia_app@{host}:5432/korpus"
         r = _impor({"PG_URL_APP": url})
         assert r.returncode == 0, f"host lokal '{host}' seharusnya diterima: {r.stderr[-300:]}"
+
+
+# ----------------------------------------------------- OpenBao (secret manager)
+
+def test_openbao_tanpa_konfigurasi_kosong(monkeypatch):
+    """Tanpa OPENBAO_ADDR/TOKEN -> {} (jatuh ke env/default). App tetap jalan
+    tanpa OpenBao - itu yang menjaga janji zero-setup lab."""
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_bao_cache", None)     # reset cache
+    monkeypatch.delenv("OPENBAO_ADDR", raising=False)
+    monkeypatch.delenv("OPENBAO_TOKEN", raising=False)
+    assert security._openbao_secrets() == {}
+
+
+def test_env_menang_atas_openbao(monkeypatch):
+    """Urutan sumber: env menimpa OpenBao (untuk uji/darurat)."""
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_bao_cache", {"SESSION_SECRET": "dari-bao"})
+    monkeypatch.setenv("SESSION_SECRET", "dari-env")
+    assert security._sourced("SESSION_SECRET") == "dari-env"
+
+
+def test_openbao_dipakai_saat_env_kosong(monkeypatch):
+    """Env kosong -> rahasia diambil dari OpenBao, bukan default lab."""
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_bao_cache", {"SESSION_SECRET": "rahasia-bao"})
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    assert security.signing_secret("SESSION_SECRET", "default-lab") == "rahasia-bao"
+
+
+def test_openbao_kosong_jatuh_ke_default_lab(monkeypatch):
+    """OpenBao tak menyediakan & bukan produksi -> default lab (zero-setup)."""
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_bao_cache", {})
+    monkeypatch.setattr(security, "IS_PRODUCTION", False)
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    assert security.signing_secret("SESSION_SECRET", "default-lab") == "default-lab"
