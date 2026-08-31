@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ragcore.domain import Document
+from ragcore.domain.guard import screen
 from ragcore.generation.answerer import compose_answer
 from ragcore.generation.citation import (
     CitationReport,
@@ -137,4 +138,20 @@ class AnswerService:
                                  person=person, session=session)
         report = check_citation(content, len(chunks))
         warnings = list(citation_warnings(report, content))
+
+        # GUARD KELUARAN (OWASP LLM07) DI SINI, BUKAN DI TIAP ADAPTER.
+        #
+        # Sebelumnya penyaringan hanya dipasang di UI Streamlit (_answer), atas
+        # asumsi "hanya UI yang menampilkan". Asumsi itu runtuh begitu API
+        # /ask ada: handler HTTP menyerialisasi content mentah lewat
+        # to_payload(), sehingga injeksi prompt bisa menarik prompt sistem
+        # verbatim lewat API tanpa tersaring sama sekali. Menaruh screen() di
+        # use-case bersama menutup SEMUA konsumen sekaligus (UI, CLI, API) -
+        # pola yang sama sudah dipakai AgentService.
+        #
+        # called_tool=("search_rules",): di jalur ini retrieval MEMANG terjadi
+        # (chunks di atas), jadi sitasi dokumen itu sah dan tak boleh ditahan
+        # sebagai karangan. Yang dijaga di sini kebocoran prompt sistem.
+        # Idempoten: menyaring ulang di UI atas hasil ini tak mengubah apa pun.
+        content = screen(content, called_tool=("search_rules",))
         return AnswerOutcome(content, chunks, report, warnings)

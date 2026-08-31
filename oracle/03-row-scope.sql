@@ -16,6 +16,11 @@
 -- (pengawasan/audit lintas-unit). Identitas diambil dari NIP yang SUDAH
 -- terverifikasi aplikasi, dan unitnya DITURUNKAN DARI TABEL di sini - bukan
 -- dipercaya dari pemanggil.
+--
+-- PERTAHANAN BERLAPIS (temuan pentest F-02): begitu identitas pemohon terpin
+-- di sesi (set_identity), eskalasi 'lihat semua' (set_operator) DITOLAK di
+-- basis data - jadi validator SELECT-tunggal di aplikasi bukan lagi
+-- satu-satunya penghalang. Lihat set_operator di bawah.
 -- =====================================================================
 
 ALTER SESSION SET CONTAINER = FREEPDB1;
@@ -49,17 +54,37 @@ CREATE OR REPLACE PACKAGE BODY ncs.rag_scope AS
     DBMS_SESSION.SET_CONTEXT('rag_ctx', 'unit', v_unit);
     DBMS_SESSION.SET_CONTEXT('rag_ctx', 'scope_all',
                              CASE WHEN v_unit = 'Direksi' THEN 'Y' ELSE 'N' END);
+    -- PIN sesi ke sebuah identitas terverifikasi. Ini mematikan set_operator
+    -- (lihat di bawah): sekali agent menyetel identitas pemohon, tak ada lagi
+    -- eskalasi 'lihat semua' yang bisa dipanggil dari SQL model.
+    DBMS_SESSION.SET_CONTEXT('rag_ctx', 'pinned', 'Y');
   EXCEPTION
     WHEN NO_DATA_FOUND THEN
       -- NIP tak dikenal -> tak melihat apa pun (fail-closed).
       DBMS_SESSION.SET_CONTEXT('rag_ctx', 'unit', NULL);
       DBMS_SESSION.SET_CONTEXT('rag_ctx', 'scope_all', 'N');
+      DBMS_SESSION.SET_CONTEXT('rag_ctx', 'pinned', 'Y');
   END set_identity;
 
   PROCEDURE set_operator IS
   BEGIN
     -- Konteks operator/maintenance (CLI, BUKAN web anonim): lihat semua,
     -- sejalan dengan connection_for(None) = pemilik di sisi aplikasi.
+    --
+    -- PERTAHANAN BERLAPIS (temuan pentest F-02). Guard aplikasi memvalidasi
+    -- SQL model SELECT-tunggal supaya set_operator tak bisa dipanggil dari
+    -- jalur model. Ini lapis KEDUA di basis data: begitu sebuah identitas
+    -- pemohon terpin di sesi ini (set_identity dipanggil guard SEBELUM tiap
+    -- query), eskalasi 'lihat semua' DITOLAK - walau validator aplikasi
+    -- tertembus dan `EXEC ncs.rag_scope.set_operator` sampai ke basis data,
+    -- ia gagal dan penyaringan per-unit tetap berlaku. set_operator hanya
+    -- berhasil pada sesi operator yang belum pernah terpin identitas (CLI
+    -- tepercaya), sejalan connection_for(None).
+    IF SYS_CONTEXT('rag_ctx', 'pinned') = 'Y' THEN
+      RAISE_APPLICATION_ERROR(
+        -20002,
+        'set_operator ditolak: sesi sudah terpin ke identitas pemohon');
+    END IF;
     DBMS_SESSION.SET_CONTEXT('rag_ctx', 'scope_all', 'Y');
   END set_operator;
 
