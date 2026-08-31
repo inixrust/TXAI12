@@ -11,10 +11,19 @@ import os
 from ragcore.settings.security import secret
 
 # --------------------------------------------------- storage vektor
-# "chroma" (bawaan TX-AI11) atau "pgvector" (TX-AI12).
-# Sengaja bisa dipilih: seluruh Hari 2 adalah tentang membuktikan bahwa
-# hasil kedua storage itu setara pada set uji yang sama.
-STORAGE: str = os.getenv("STORAGE", "chroma")
+# "pgvector" (bawaan) atau "chroma".
+#
+# BAWAANNYA pgvector, dan alasannya KEAMANAN. chroma tak mengenal hak-akses
+# per-users: pembatasan hanya bergantung pada filter di aplikasi (filter_for) -
+# kalau filter itu lupa/tertembus, dokumen terbatas unit lain bocor, tanpa
+# jaring pengaman. pgvector menegakkan Row-Level Security di BASIS DATA lewat
+# peran rag_app + GUC app.unit_pengguna (lihat PG_URL_APP): setiap query,
+# termasuk yang lupa menyaring, tersaring ke unit pemohon. Filter aplikasi
+# menjadi lapis KEDUA, RLS lapis KETIGA yang menjaminnya.
+#
+# chroma tetap disediakan untuk peragaan L2 (membandingkan kedua storage pada
+# set uji yang sama) dan untuk jalan tanpa Postgres - setel STORAGE=chroma.
+STORAGE: str = os.getenv("STORAGE", "pgvector")
 
 PG_URL: str = secret(
     "PG_URL",
