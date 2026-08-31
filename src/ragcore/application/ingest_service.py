@@ -30,6 +30,17 @@ from typing import Any, Protocol
 _VALID_CLASSIFICATION = ("terbatas", "umum")
 _FAIL_CLOSED = "terbatas"
 
+# Jenis berkas yang diterima - allowlist EKSTENSI di lapis SERVER. file_uploader
+# di UI menyaring di sisi klien, tetapi API /documents dan CLI TIDAK lewat
+# widget itu. Batas yang hanya dipasang di UI bukan batas - alasan yang sama
+# dengan check_size di blob. Allowlist (bukan denylist): yang tak dikenal
+# ditolak, bukan dicoba.
+_ALLOWED_EXT = (".pdf", ".md", ".txt")
+
+
+class UnsupportedType(ValueError):
+    """Jenis berkas di luar allowlist. Ditolak SEBELUM disimpan/diantrekan."""
+
 
 class BlobStore(Protocol):
     """Port penyimpanan berkas. Yang sungguhan menulis ke filesystem dan
@@ -91,6 +102,15 @@ class IngestService:
         if uploader is PUBLIC:
             raise PermissionError(
                 "Tamu tidak dapat mengunggah dokumen. Masuk lebih dulu.")
+
+        # Jenis berkas dibatasi DI SINI (server), bukan hanya di widget UI.
+        # Ekstensi diperiksa dari nama berkas pengunggah; ditolak sebelum blob
+        # disimpan atau tugas diantrekan.
+        ext = Path(filename).suffix.lower()
+        if ext not in _ALLOWED_EXT:
+            raise UnsupportedType(
+                f"Jenis berkas '{ext or 'tanpa ekstensi'}' tidak diizinkan. "
+                f"Hanya {', '.join(_ALLOWED_EXT)} yang diterima.")
 
         # Klasifikasi gagal-tertutup: apa pun yang bukan nilai sah -> terbatas.
         if classification not in _VALID_CLASSIFICATION:

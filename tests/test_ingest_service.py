@@ -114,6 +114,33 @@ def test_pengunggah_dititipkan_ke_antrean():
     assert svc.task_queue.sent["pengunggah"] == "NCS-0031"
 
 
+def test_tiga_jenis_berkas_diterima():
+    """PDF, MD, TXT - ketiganya diterima dan benar-benar diantrekan. Ekstensi
+    tak peka huruf besar/kecil."""
+    for nama in ("SOP-01.pdf", "catatan.md", "notulen.txt", "BESAR.PDF"):
+        svc = _service()
+        r = svc.submit(nama, b"isi", uploader=_User("Divisi TI"))
+        assert r.name == nama
+        assert svc.task_queue.sent is not None, f"{nama} tak diantrekan"
+
+
+def test_jenis_berkas_lain_ditolak_sebelum_disimpan():
+    """Selain pdf/md/txt DITOLAK di server (bukan hanya widget UI), dan berkas
+    TAK disimpan maupun diantrekan. Termasuk trik ekstensi-ganda (SOP.pdf.exe)
+    dan berkas tanpa ekstensi."""
+    import pytest
+
+    from ragcore.application.ingest_service import UnsupportedType
+
+    for jahat in ("virus.exe", "index.html", "arsip.zip", "skrip.js",
+                  "SOP.pdf.exe", "tanpaekstensi"):
+        svc = _service()
+        with pytest.raises(UnsupportedType):
+            svc.submit(jahat, b"isi", uploader=_User("Divisi TI"))
+        assert svc.blob_store.saved == [], f"{jahat} sempat disimpan"
+        assert svc.task_queue.sent is None, f"{jahat} sempat diantrekan"
+
+
 def test_tamu_public_ditolak_mengunggah():
     """Tamu (PUBLIC) tak boleh menaruh dokumen di antrean.
 
@@ -129,6 +156,30 @@ def test_tamu_public_ditolak_mengunggah():
     svc = _service()
     with pytest.raises(PermissionError):
         svc.submit("SOP-baru.pdf", b"data", uploader=PUBLIC)
+
+
+def test_blob_menolak_berkas_terlalu_besar(monkeypatch):
+    """UKURAN ditegakkan di titik STORAGE (blob.check_size), jadi berlaku untuk
+    UI, API, DAN CLI - bukan hanya setelan maxUploadSize web."""
+    import pytest
+
+    from ragcore import config
+    from ragcore.ingest import blob
+
+    monkeypatch.setattr(config, "MAX_UPLOAD_MB", 0.001)      # ~1 KB
+    with pytest.raises(blob.TooLarge):
+        blob.check_size(b"x" * 5000)
+    blob.check_size(b"kecil")                                # di bawah -> lolos
+
+
+def test_blob_safe_name_menahan_path_traversal():
+    """Nama berkas dari users tak boleh menulis ke luar folder unggahan."""
+    from ragcore.ingest import blob
+
+    for jahat in ("../../etc/passwd", r"..\..\Windows\system32\x",
+                  "/abs/olute/x.pdf"):
+        aman = blob.safe_name(jahat)
+        assert "/" not in aman and "\\" not in aman and ".." not in aman
 
 
 def test_adapter_postgres_menerima_pengunggah():

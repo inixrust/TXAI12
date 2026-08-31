@@ -674,7 +674,7 @@ def _upload_panel(person) -> None:
     Pekerja terpisah yang mengerjakan sisanya. Pemisahan itulah keseluruhan
     pelajaran modul ini.
     """
-    from ..ingest import blob, queue
+    from ..ingest import queue
 
     st.subheader("Unggah dokumen")
     st.caption("Berkas disimpan dan dimasukkan ke queue. Pengindeksan "
@@ -689,7 +689,6 @@ def _upload_panel(person) -> None:
 
     if file is not None and st.button("Masukkan ke queue", type="primary"):
         from ragcore.application import build_ingest_service
-        from ragcore.ingest import blob
 
         # Unit tidak dikirim ke service: IngestService mengambilnya dari
         # `uploader` (person) - itulah yang mencegah 'tandai dokumenku milik
@@ -699,7 +698,9 @@ def _upload_panel(person) -> None:
             receipt = build_ingest_service().submit(
                 file.name, file.getvalue(), uploader=person,
                 kind=kind, classification=classification)
-        except blob.TooLarge as e:
+        except ValueError as e:
+            # blob.TooLarge (ukuran) DAN UnsupportedType (jenis) sama-sama
+            # ValueError - keduanya "berkas ditolak" yang dicatat & disampaikan.
             audit.record("unggah-ditolak", person, outcome="ditolak",
                          berkas=file.name, alasan=str(e), session=sesi)
             st.error(f"Berkas ditolak: {e}")
