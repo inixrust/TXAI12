@@ -119,6 +119,19 @@ def test_session_dipakai_ulang_untuk_banyak_pertanyaan():
     assert src.dibuka == 1        # sesi dibuka SEKALI untuk dua pertanyaan
 
 
+def test_identity_context_hanya_untuk_user_ber_unit():
+    """Konteks unit disisipkan HANYA untuk User ber-unit (dari identitas login,
+    bukan pertanyaan). Operator/PUBLIC/None tak punya unit -> tanpa konteks."""
+    from ragcore.application.agent_service import _identity_context
+    from ragcore.domain.users import PUBLIC, REGISTRY
+
+    ctx = _identity_context(REGISTRY["NCS-0031"])   # Sinta, Divisi TI
+    assert ctx is not None and "Divisi TI" in ctx
+    assert "bukan izin" in ctx                       # tegas: DB tetap penegak
+    assert _identity_context(None) is None           # operator
+    assert _identity_context(PUBLIC) is None          # anonim, tanpa unit
+
+
 def test_to_payload_json_serializable():
     import json
 

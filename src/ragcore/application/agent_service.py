@@ -69,6 +69,26 @@ _OVER_LIMIT = ("Permintaan tidak dapat diselesaikan dalam batas waktu atau "
                "langkah yang ditetapkan. Coba persempit pertanyaannya.")
 
 
+def _identity_context(identity: Any) -> str | None:
+    """Konteks unit pemohon TERVERIFIKASI - agar 'divisi saya' bisa dipahami.
+
+    Nilainya dari identitas login (person.unit), BUKAN dari pertanyaan, jadi
+    tak bisa dibujuk lewat prompt. Dan ini HANYA petunjuk agar model menulis SQL
+    yang masuk akal - BUKAN penegakan: VPD Oracle tetap menyaring baris ke unit
+    pemohon (lewat set_identity di guard) apa pun yang ditulis model. Karena itu
+    walau model salah menulis WHERE unit lain, hasilnya tetap 0 baris. None untuk
+    operator (None) / PUBLIC yang memang tak punya unit.
+    """
+    unit = getattr(identity, "unit", None)
+    if not unit:
+        return None
+    return (f"Konteks identitas terverifikasi: pemohon berasal dari unit "
+            f"'{unit}'. Bila pemohon menyebut 'divisi saya' / 'unit saya' / "
+            f"'di tempat saya', maksudnya unit '{unit}'. Ini konteks untuk "
+            f"MEMAHAMI pertanyaan, bukan izin - penyaringan basis data tetap "
+            f"membatasi hasil ke unit pemohon apa pun SQL yang Anda tulis.")
+
+
 class ToolSource(Protocol):
     """Port sumber tool basis data. Yang sungguhan membuka sesi MCP; fake
     untuk tes cukup menghasilkan daftar tool tiruan tanpa proses apa pun."""
@@ -124,10 +144,15 @@ class AgentRunner:
             # dihentikan). Lihat STEP_LIMIT / TIMEOUT_DETIK di atas.
             config = {**invoke_config("hibrida", question=question),
                       "recursion_limit": STEP_LIMIT}
+            # Sisipkan konteks unit pemohon (dari identitas, bukan pertanyaan)
+            # supaya 'divisi saya' bisa dipahami. Tracing tetap memakai
+            # `question` asli; hanya isi pesan yang diberi awalan konteks.
+            ctx = _identity_context(identity)
+            content = f"[{ctx}]\n\n{question}" if ctx else question
             try:
                 result = await asyncio.wait_for(
                     self._agent.ainvoke(
-                        {"messages": [{"role": "user", "content": question}]},
+                        {"messages": [{"role": "user", "content": content}]},
                         config=config,
                     ),
                     timeout=TIMEOUT_DETIK,
