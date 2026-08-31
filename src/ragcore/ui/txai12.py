@@ -328,7 +328,8 @@ def _answer(query_text: str, k: int, source_show: bool, filters_active: bool) ->
 
     with st.chat_message("assistant"):
         try:
-            with st.spinner("Mencari di dokumen..."):
+            with st.spinner("Mencari di dokumen & menyusun jawaban… "
+                            "(biasanya 10–40 detik)"):
                 # Mematikan filters aplikasi TIDAK ikut mematikan
                 # identitas basis data: `orang=` tetap terkirim. Itulah yang
                 # membuat peragaannya bermakna — kalau keduanya dimatikan,
@@ -504,7 +505,7 @@ def _flow_panel(person) -> None:
         if st.form_submit_button("Kirim") and q.strip():
             tid = f"alur-{uuid.uuid4().hex[:12]}"
             st.session_state.pop("alur_langsung", None)
-            with st.spinner("Memproses pertanyaan Anda..."):
+            with st.spinner("Memproses pertanyaan Anda… (biasanya 15–60 detik)"):
                 res = _run_flow(
                     {"question": q, "nip": getattr(person, "nip", "")}, tid)
             itr = res.get("__interrupt__")
@@ -634,21 +635,28 @@ def _agent_panel(person) -> None:
         kirim = st.form_submit_button("Tanya agent")
     if kirim and q.strip():
         try:
-            with st.spinner("Agent memeriksa dokumen dan basis data…"):
+            with st.spinner("Agent memeriksa dokumen & basis data… "
+                            "(biasanya 30–90 detik)"):
                 outcome = _run_agent_sync(q, person)
             # outcome.answer SUDAH disaring guard keluaran di AgentService.
             st.session_state.agent_hasil = {
-                "answer": outcome.answer,
+                "q": q, "answer": outcome.answer,
                 "tools": sorted(outcome.tools_called)}
         except Exception as e:
-            st.session_state.agent_hasil = {"error": f"{type(e).__name__}: {e}"}
+            st.session_state.agent_hasil = {
+                "q": q, "error": f"{type(e).__name__}: {e}"}
         st.rerun()
 
     hasil = st.session_state.get("agent_hasil")
     if hasil:
         st.divider()
+        if hasil.get("q"):
+            st.markdown(f"**Anda:** {hasil['q']}")
         if hasil.get("error"):
-            st.error("Agent gagal dijalankan: " + hasil["error"])
+            st.error("Agent tidak dapat menyelesaikan permintaan ini. Coba "
+                     "persempit pertanyaannya atau ulangi.")
+            with st.expander("Rincian teknis"):
+                st.code(hasil["error"])
         else:
             st.markdown(hasil["answer"])
             label = {"search_rules": "dokumen", "sql_run": "basis data"}

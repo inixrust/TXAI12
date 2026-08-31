@@ -1,4 +1,11 @@
 # Setelan Streamlit untuk UI TX-AI12.
+[theme]
+# Aksen teal yang tenang & profesional - lebih nyaman daripada merah bawaan
+# Streamlit (tombol, slider, sitasi). base="dark" mempertahankan tampilan gelap;
+# pengguna tetap bisa beralih ke terang lewat menu Settings.
+base = "dark"
+primaryColor = "#2dd4bf"
+
 [server]
 # Selaraskan batas unggah widget dengan penegakan SERVER (blob.check_size =
 # config.MAX_UPLOAD_MB, saat ini 25 MB). Tanpa ini, widget default 200 MB:
