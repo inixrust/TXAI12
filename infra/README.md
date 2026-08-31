@@ -19,6 +19,13 @@ deployment yang perlu langkah operasional di bawah.
                                                OpenBao  (KV v2: secret/txai12)
 ```
 
+> **Sudah diuji langsung di Docker.** OpenBao (raft) di-init + unseal, rahasia
+> lab ditulis ke `secret/txai12`, token app baca-saja dibuat, lalu aplikasi
+> dijalankan `RAG_ENV=production` **tanpa satu pun kredensial DB di env** — dan
+> berhasil: login (SESSION_SECRET dari OpenBao), koneksi pgvector + RLS (TI
+> melihat 43 chunk, unit lain 30), sampai jawaban RAG ter-render di UI. Token
+> salah → gagal-tertutup seperti seharusnya.
+
 ## Isi folder
 
 | Berkas | Guna |
@@ -63,10 +70,15 @@ docker compose -f infra/compose-infra.yaml exec openbao bao operator unseal <KEY
 docker compose -f infra/compose-infra.yaml exec openbao bao operator unseal <KEY_3>
 
 # 4) Isi rahasia + buat token app. GANTI nilai 'GANTI' di bootstrap.sh dulu!
+#    (Berkas infra/ ter-mount di dalam container pada /openbao/infra.)
 docker compose -f infra/compose-infra.yaml exec \
   -e OPENBAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN=<ROOT_TOKEN> \
-  openbao sh /openbao/bootstrap.sh
+  openbao sh /openbao/infra/bootstrap.sh
 ```
+
+Volume data di-chown otomatis oleh service `openbao-init` sebelum OpenBao start,
+jadi tak perlu langkah manual. Backend penyimpanan adalah **raft** (integrated
+storage) - persisten dan tidak usang.
 
 Perintah terakhir mencetak **OPENBAO_TOKEN** untuk aplikasi. Setel di
 lingkungan app (bukan `.env` plaintext untuk produksi — idealnya via systemd
@@ -98,10 +110,14 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
   dikomentari.
 - **TLS.** `.localhost` memakai CA internal Caddy (uji). Untuk publik, ganti ke
   domain sungguhan + buka email admin di blok global `Caddyfile` (Let's Encrypt).
-- **App masih di host.** Compose ini menjalankan OpenBao + Caddy; aplikasi masih
-  via venv di host, dijangkau Caddy lewat `host.docker.internal`. Untuk isolasi
-  penuh (app di jaringan `backend` internal, port 8200 ditutup), app perlu
-  dikontainerkan — termasuk SQLcl/Java untuk MCP Oracle — itu langkah terpisah.
+- **App masih di host → jaringan belum `internal`.** Compose ini menjalankan
+  OpenBao + Caddy; aplikasi masih via venv di host, menjangkau OpenBao lewat
+  port 8200 yang di-publish dan dijangkau Caddy lewat `host.docker.internal`.
+  Karena `internal: true` memutus NAT (jaringan internal tak bisa mem-publish
+  port), jaringan `backend` **sengaja belum internal**. Untuk isolasi penuh
+  (OpenBao berhenti mem-publish 8200, app di `backend` internal), app perlu
+  dikontainerkan — termasuk SQLcl/Java untuk MCP Oracle — lalu aktifkan
+  `internal: true`. Itu langkah terpisah.
 
 ## Langkah lanjut (belum di kerangka ini)
 

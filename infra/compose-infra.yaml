@@ -7,15 +7,30 @@
 name: txai12-infra
 
 services:
+  # --- Siapkan kepemilikan volume data ------------------------------------
+  # Volume bernama dibuat root-owned oleh Docker, sedangkan OpenBao berjalan
+  # sebagai uid 100 (openbao) dan storage 'file' perlu menulis ke sana. Init
+  # sekali-jalan ini men-chown volume lalu keluar; openbao menunggunya selesai.
+  openbao-init:
+    image: alpine:3
+    command: sh -c "chown -R 100:1000 /openbao/data"
+    volumes:
+      - openbao-data:/openbao/data
+    restart: "no"
+
   # --- Secret manager ------------------------------------------------------
   openbao:
     image: openbao/openbao:latest
-    command: server -config=/openbao/config/config.hcl
+    # Config di /openbao/infra (BUKAN /openbao/config yang di-scan otomatis oleh
+    # entrypoint image - itu memicu peringatan "duplicate configuration").
+    command: server -config=/openbao/infra/config.hcl
+    depends_on:
+      openbao-init:
+        condition: service_completed_successfully
     cap_add: [IPC_LOCK]          # cegah rahasia ter-swap ke disk
     volumes:
       - openbao-data:/openbao/data
-      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
-      - ./openbao/txai12-policy.hcl:/openbao/txai12-policy.hcl:ro
+      - ./openbao:/openbao/infra:ro    # config.hcl, policy, bootstrap.sh
     # Saat BOOTSTRAP, buka port ke host agar bisa init/unseal + jalankan
     # bootstrap.sh, DAN agar app yang berjalan di host bisa membaca rahasia.
     # Bila app ikut dikontainerkan (jaringan backend internal), TUTUP ini.
@@ -49,7 +64,13 @@ services:
 networks:
   frontend:                     # caddy <-> luar & app
   backend:                      # openbao <-> app
-    internal: true              # tak ada rute ke internet
+    # CATATAN: 'internal: true' MEMUTUS NAT - jaringan internal tak bisa
+    # mem-publish port ke host. Selama aplikasi masih di HOST, ia menjangkau
+    # OpenBao lewat port 8200 yang di-publish, jadi jaringan ini TIDAK bisa
+    # internal dulu. Setelah app dikontainerkan (openbao berhenti mem-publish
+    # 8200, komunikasi app<->openbao sepenuhnya di dalam Docker), AKTIFKAN:
+    #   internal: true
+    # untuk memutus OpenBao dari internet sepenuhnya.
 
 volumes:
   openbao-data:

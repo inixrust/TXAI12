@@ -3,19 +3,28 @@
 # Dev mode (`bao server -dev`) menyimpan rahasia DI MEMORI dan auto-unseal dengan
 # root token tetap - nyaman untuk coba-coba, TAPI semua hilang saat restart dan
 # tak ada segel. Untuk apa pun yang menyimpan rahasia sungguhan, pakai storage
-# persisten + unseal sungguhan seperti di bawah.
-storage "file" {
-  path = "/openbao/data"
+# persisten (raft) + unseal sungguhan seperti di bawah.
+# Integrated storage (Raft): backend yang direkomendasikan & tidak usang -
+# menyimpan data terenkripsi di disk, siap-HA bila kelak ditambah node.
+storage "raft" {
+  path    = "/openbao/data"
+  node_id = "txai12-node-1"
 }
 
 listener "tcp" {
-  address = "0.0.0.0:8200"
+  address         = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
   # TLS diterminasi oleh Caddy di depan, dan jaringan 'backend' bersifat
   # internal (tanpa rute ke luar). Untuk deployment di mana OpenBao terekspos
   # langsung, AKTIFKAN TLS di sini (tls_cert_file/tls_key_file) - jangan
   # mengandalkan proxy saja.
   tls_disable = true
 }
+
+# Alamat yang diumumkan node (wajib untuk raft; juga menghapus peringatan
+# 'no api_addr'). 127.0.0.1 cocok untuk single-node.
+api_addr     = "http://127.0.0.1:8200"
+cluster_addr = "http://127.0.0.1:8201"
 
 # UI web OpenBao (opsional) - berguna saat bootstrap. Aman dimatikan setelahnya.
 ui = true
