@@ -45,8 +45,9 @@ def test_sandi_benar_berpindah_ke_chat():
     # Kunci yang dipakai layar chat harus terinisialisasi konsisten.
     assert "history" in at.session_state
     assert "id_sesi" in at.session_state
-    # Layar chat dikenali dari tab-tabnya (Tanya, Konsultasi, Unggah).
-    assert [t.label for t in at.tabs] == ["Tanya", "Konsultasi", "Unggah dokumen"]
+    # Layar chat dikenali dari tab-tabnya (Tanya, Konsultasi, Agent, Unggah).
+    assert [t.label for t in at.tabs] == [
+        "Tanya", "Konsultasi", "Agent", "Unggah dokumen"]
 
 
 def _click_label(at, prefix):

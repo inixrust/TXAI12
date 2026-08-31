@@ -173,6 +173,10 @@ def _sidebar() -> tuple[int, bool, bool]:
                          session=st.session_state.get("id_sesi"))
             del st.session_state.person
             st.session_state.pop("id_sesi", None)
+            # Hasil yang ter-scope ke user ini JANGAN tersisa untuk user
+            # berikutnya di peramban yang sama - hapus jejak jawaban per-unit.
+            st.session_state.pop("agent_hasil", None)
+            st.session_state.pop("alur_langsung", None)
             # Tandai supaya run() TIDAK memulihkan lagi dari cookie pada rerun
             # ini, dan menghapus cookie-nya di layar login (di sanalah JS-nya
             # sempat berjalan - lihat catatan di atas _write_session_cookie).
@@ -552,6 +556,107 @@ BADGE = {"menunggu": ":gray[menunggu]", "diproses": ":blue[diproses]",
            "selesai": ":green[selesai]", "gagal": ":red[GAGAL]"}
 
 
+def _agent_loop():
+    """Satu event loop latar yang HIDUP selama proses app.
+
+    KENAPA PERSISTEN, BUKAN asyncio.run() per panggilan. Agent hibrida memakai
+    klien MCP (anyio + subprocess SQLcl). Membuat lalu MEMBONGKAR event loop di
+    tiap panggilan membuat pembongkaran task-group/subprocess balapan: panggilan
+    PERTAMA berhasil, yang KEDUA gagal dengan "ExceptionGroup: unhandled errors
+    in a TaskGroup". Satu loop yang tetap hidup - di thread daemon, dibuat sekali
+    (modul diimpor sekali) - menghilangkan siklus buat/bongkar itu.
+    """
+    import asyncio
+    import threading
+
+    loop = getattr(_agent_loop, "_loop", None)
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        threading.Thread(target=loop.run_forever, daemon=True,
+                         name="agent-loop").start()
+        _agent_loop._loop = loop
+    return loop
+
+
+def _run_agent_sync(question: str, person):
+    """Jalankan agent hibrida (async) dari Streamlit (sync) di loop latar tetap.
+
+    ACTIVE_USER (ContextVar) diset DI DALAM AgentService.ask, pada konteks async
+    yang sama - jadi penyaringan per-unit tetap benar meski dijalankan di loop
+    lain. run_coroutine_threadsafe menyerahkan koroutin ke loop latar dan
+    memblokir thread skrip sampai selesai (batas waktu agent tetap di dalam).
+    """
+    import asyncio
+
+    from ragcore.application import build_agent_service
+
+    async def _go():
+        # operator=False (BAWAAN) -> koneksi rag_baca HAK-MINIMAL; identity diset
+        # ke user login -> guard menjalankan set_identity(NIP) -> VPD Oracle
+        # menyaring baris ke UNIT pemohon. JANGAN operator=True (itu 'lihat
+        # semua', hanya untuk CLI/pemeliharaan).
+        return await build_agent_service().ask_once(question, identity=person)
+
+    fut = asyncio.run_coroutine_threadsafe(_go(), _agent_loop())
+    return fut.result()
+
+
+def _agent_panel(person) -> None:
+    """Agent hibrida: dokumen (search_rules) + basis data Oracle (sql_run).
+
+    KEAMANAN - tab ini beda dari Tanya/Konsultasi yang hanya dokumen: ia
+    menyentuh DATA KARYAWAN, jadi lapisannya diperketat.
+
+      1. WAJIB LOGIN. Tamu (PUBLIC) tak pernah sampai ke sini - run() memutus
+         lebih dulu - dan ditolak lagi di sini sebagai belt.
+      2. IDENTITAS = user login, diteruskan sebagai `identity`. Guard menyetel
+         set_identity(NIP) pada akun rag_baca (hak-minimal, operator=False),
+         lalu VPD Oracle menyaring baris ke UNIT pemohon. Penegakan di basis
+         data, bukan prompt: user tak bisa melihat unit lain walau memintanya
+         (terbukti di uji /agent/ask). SQL model juga divalidasi SELECT-tunggal.
+      3. KELUARAN sudah melewati guard OWASP LLM07 di AgentService; batas
+         langkah + timeout agent juga berlaku (pagar sumber daya).
+    """
+    st.subheader("Agent — dokumen + basis data karyawan")
+    if person is P.PUBLIC:                     # belt: seharusnya tak tercapai
+        st.error("Agent basis data memerlukan login.")
+        return
+    st.caption(
+        "Menjawab dari **dokumen** DAN **basis data karyawan**. Data karyawan "
+        f"tersaring ke unit Anda (**{person.unit}**) oleh basis data (VPD) — "
+        "Anda tak melihat unit lain walau memintanya. Contoh: _Siapa saja "
+        "karyawan di divisi saya?_ · _Apakah cuti Budi sesuai SOP?_")
+
+    with st.form("agent_tanya"):
+        q = st.text_input(
+            "Pertanyaan untuk agent",
+            placeholder="mis. Siapa saja karyawan di divisi saya?")
+        kirim = st.form_submit_button("Tanya agent")
+    if kirim and q.strip():
+        try:
+            with st.spinner("Agent memeriksa dokumen dan basis data…"):
+                outcome = _run_agent_sync(q, person)
+            # outcome.answer SUDAH disaring guard keluaran di AgentService.
+            st.session_state.agent_hasil = {
+                "answer": outcome.answer,
+                "tools": sorted(outcome.tools_called)}
+        except Exception as e:
+            st.session_state.agent_hasil = {"error": f"{type(e).__name__}: {e}"}
+        st.rerun()
+
+    hasil = st.session_state.get("agent_hasil")
+    if hasil:
+        st.divider()
+        if hasil.get("error"):
+            st.error("Agent gagal dijalankan: " + hasil["error"])
+        else:
+            st.markdown(hasil["answer"])
+            label = {"search_rules": "dokumen", "sql_run": "basis data"}
+            dipakai = ", ".join(label.get(a, a) for a in (hasil.get("tools") or []))
+            st.caption(f"Sumber alat: {dipakai or '—'} · data tersaring ke unit "
+                       f"**{person.unit}**")
+
+
 def _upload_panel(person) -> None:
     """Unggah dokumen ke queue ingest, lalu tampilkan statusnya.
 
@@ -699,13 +804,16 @@ def run() -> None:
         _question_panel(k, source_show, filters_active)
         return
 
-    question_tab, tab_alur, tab_upload = st.tabs(
-        ["Tanya", "Konsultasi", "Unggah dokumen"])
+    question_tab, tab_alur, tab_agent, tab_upload = st.tabs(
+        ["Tanya", "Konsultasi", "Agent", "Unggah dokumen"])
     with tab_upload:
         _upload_panel(st.session_state.person)
 
     with tab_alur:
         _flow_panel(st.session_state.person)
+
+    with tab_agent:
+        _agent_panel(st.session_state.person)
 
     with question_tab:
         _question_panel(k, source_show, filters_active)
