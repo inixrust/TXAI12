@@ -261,5 +261,57 @@
     ],
     "jenis": "ejaan_pindaian",
     "catatan": "SE-12/NCS/DIR/2026. Pada halaman 1 nomor yang sama terbaca 'SE-2/2NCS/DIR/2026' - salah baca yang NYATA ada di korpus ini. Halaman 0 memuat versi yang benar, jadi kasus ini menguji apakah pencarian menemukan halaman yang utuh, bukan yang rusak."
+  },
+  {
+    "tanya": "Berapa jam kerja dalam satu minggu?",
+    "sumber": "SOP-01-Kepegawaian.pdf",
+    "halaman": [
+      2
+    ],
+    "jenis": "mudah",
+    "catatan": "40 jam (SOP-01 Pasal 8, halaman 3 cetak). Menambah cakupan BAB IV yang sebelumnya hanya tersentuh lewat lembur."
+  },
+  {
+    "tanya": "Kapan hak cuti tahunan yang tidak digunakan menjadi hangus?",
+    "sumber": "SOP-01-Kepegawaian.pdf",
+    "halaman": [
+      1
+    ],
+    "jenis": "parafrasa"
+  },
+  {
+    "tanya": "Berapa tunjangan komunikasi bulanan untuk karyawan tetap?",
+    "sumber": "SOP-01-Kepegawaian.pdf",
+    "halaman": [
+      2
+    ],
+    "jenis": "angka_tabel",
+    "catatan": "Rp 250.000 (SOP-01 Pasal 11, tabel tunjangan halaman 3). Angka di dalam tabel hasil pindaian - salah baca satu digit tetap terlihat meyakinkan."
+  },
+  {
+    "tanya": "Berapa lama masa berlaku daftar hitam penyedia?",
+    "sumber": "SOP-02-Pengadaan.pdf",
+    "halaman": [
+      1
+    ],
+    "jenis": "mudah",
+    "catatan": "2 tahun (SOP-02 Pasal 7). Menambah cakupan BAB IV Penyedia yang belum ada di set uji retrieval."
+  },
+  {
+    "tanya": "Berapa tahun pengalaman minimum penyedia untuk pengadaan di atas Rp 100 juta?",
+    "sumber": "SOP-02-Pengadaan.pdf",
+    "halaman": [
+      1
+    ],
+    "jenis": "parafrasa"
+  },
+  {
+    "tanya": "Berapa batas biaya penginapan Direksi untuk perjalanan dinas luar provinsi?",
+    "sumber": "SE-12-2026-Perjalanan-Dinas.pdf",
+    "halaman": [
+      1
+    ],
+    "jenis": "angka_tabel",
+    "catatan": "Rp 2.000.000 (SE-12 Pasal 4, tabel penginapan halaman 1). Tabel KEDUA di halaman itu - berbeda dari tabel uang harian yang sudah diuji, jadi menguji pemilihan tabel yang benar dalam satu halaman."
   }
 ]

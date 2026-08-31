@@ -417,5 +417,126 @@
       "30",
       "100"
     ]
+  },
+  {
+    "tanya": "Siapa saja karyawan Divisi Keuangan dan apa golongannya?",
+    "alat_benar": [
+      "tanya_basis_data"
+    ],
+    "jenis": "basisdata_saja",
+    "acuan": "Dewi Lestari (Staf), Eko Purnomo (Kepala Divisi), dan Irfan Maulana (Staf, masa percobaan).",
+    "catatan": "Tiga orang di Divisi Keuangan. Nama dari unit lain tidak boleh muncul: bila penyaring unit atau kueri WHERE rusak, kasus ini gagal dengan sebab yang jelas, bukan diam-diam mengembalikan seluruh daftar karyawan.",
+    "wajib": [
+      "Dewi",
+      "Eko",
+      "Irfan"
+    ],
+    "terlarang": [
+      "Budi",
+      "Sinta",
+      "Andini",
+      "Fitri"
+    ]
+  },
+  {
+    "tanya": "Karyawan mana saja yang masih berstatus masa percobaan?",
+    "alat_benar": [
+      "tanya_basis_data"
+    ],
+    "jenis": "basisdata_saja",
+    "acuan": "Irfan Maulana (Divisi Keuangan) dan Hesti Wulandari (Divisi TI).",
+    "catatan": "Hanya dua yang berstatus 'percobaan'. Joko Prabowo berstatus 'kontrak' - bukan percobaan - dan menjadi jebakan bagi kueri yang menyaring status secara longgar. Budi Santoso berstatus 'tetap'.",
+    "wajib": [
+      "Irfan",
+      "Hesti"
+    ],
+    "terlarang": [
+      "Joko",
+      "Budi"
+    ]
+  },
+  {
+    "tanya": "Sebutkan seluruh nomor PO pengadaan milik Divisi TI.",
+    "alat_benar": [
+      "tanya_basis_data"
+    ],
+    "jenis": "basisdata_saja",
+    "acuan": "PO-2026-0141, PO-2026-0158, PO-2026-0188, dan PO-2026-0189.",
+    "catatan": "Empat PO Divisi TI. PO dari unit lain tidak boleh ikut disebut: 0134 (Umum), 0170 (Pengadaan), 0175 (SDM), 0181 (Keuangan), 0163 (Umum). Kasus penyaringan kolom unit yang jawabannya bisa diperiksa persis.",
+    "wajib": [
+      "0141",
+      "0158",
+      "0188",
+      "0189"
+    ],
+    "terlarang": [
+      "0134",
+      "0170",
+      "0175",
+      "0181",
+      "0163"
+    ]
+  },
+  {
+    "tanya": "Berapa total jam lembur Dewi Lestari pada pekan 6-10 Juli 2026?",
+    "alat_benar": [
+      "tanya_basis_data"
+    ],
+    "jenis": "aritmetika",
+    "acuan": "10 jam — 4 jam (6 Juli) + 3 jam (8 Juli) + 3 jam (9 Juli).",
+    "catatan": "Penjumlahan harus di dalam SQL, bukan di kepala. Dewi tepat di bawah batas 14 jam per minggu (SOP-01 Pasal 9), pasangan pembanding kasus lembur Budi yang 16 jam.",
+    "wajib": [
+      "10"
+    ]
+  },
+  {
+    "tanya": "Berapa uang harian perjalanan dinas Kepala Divisi ke luar provinsi?",
+    "alat_benar": [
+      "search_rules"
+    ],
+    "jenis": "dokumen_saja",
+    "acuan": "Rp 700.000 (SE-12 Pasal 3, tabel uang harian).",
+    "catatan": "Angka dari tabel SE-12 halaman 1 (pindaian). Agent yang memanggil basis data di sini salah pilih alat — tarif ada di dokumen, bukan di data.",
+    "wajib": [
+      "700"
+    ]
+  },
+  {
+    "tanya": "Berapa lama masa berlaku daftar hitam penyedia menurut SOP pengadaan?",
+    "alat_benar": [
+      "search_rules"
+    ],
+    "jenis": "dokumen_saja",
+    "acuan": "2 (dua) tahun sejak ditetapkan (SOP-02 Pasal 7 ayat 2).",
+    "catatan": "Aturan murni dari dokumen. Menambah cakupan BAB IV Penyedia SOP-02 yang belum tersentuh set uji hibrida.",
+    "wajib": [
+      "2 tahun|dua tahun|2 (dua) tahun"
+    ]
+  },
+  {
+    "tanya": "Apakah lama cuti Hesti Wulandari bulan Juli sudah sesuai jenjang persetujuan?",
+    "alat_benar": [
+      "search_rules",
+      "tanya_basis_data"
+    ],
+    "jenis": "keduanya",
+    "acuan": "Tidak sesuai. Cuti Hesti 7 hari kerja (20-28 Juli 2026) hanya disetujui Manajer; SOP-01 Pasal 5 ayat (3) mewajibkan persetujuan Kepala Divisi untuk cuti lebih dari 5 hari kerja.",
+    "catatan": "Menggabungkan lama cuti dari basis data dengan ambang 5 hari dari dokumen. Fitri Handayani juga cuti 6 hari (>5) tetapi disetujui Kepala Divisi — patuh — jadi kasus ini menguji apakah agent memeriksa jenjang penyetuju, bukan sekadar lama cuti.",
+    "wajib": [
+      "tidak sesuai"
+    ]
+  },
+  {
+    "tanya": "Berapa total uang harian yang harus dibayarkan untuk SPPD-2026-0230?",
+    "alat_benar": [
+      "search_rules",
+      "tanya_basis_data"
+    ],
+    "jenis": "keduanya",
+    "acuan": "Dewi Lestari bergolongan Staf, tujuan Bogor (dalam provinsi), berangkat 6 Juli dan kembali 7 Juli = 2 hari. Tarif Staf dalam provinsi Rp 250.000 per hari, total Rp 500.000.",
+    "catatan": "Menggabungkan golongan dan tanggal dari basis data dengan tarif dari SE-12. Pasangan dengan SPPD-2026-0212 (Manajer, luar provinsi): keduanya benar hanya bila tarif dipilih menurut golongan DAN jenis tujuan yang tepat.",
+    "wajib": [
+      "500.000"
+    ]
   }
 ]
