@@ -95,3 +95,24 @@ def test_publik_dan_none_bukan_peninjau():
     assert not is_reviewer(PUBLIC)
     assert not is_reviewer(None)
     assert not is_reviewer({"peran": "pimpinan", "unit": "Divisi SDM"})
+
+
+def test_authorize_gerbang_keputusan():
+    """Gerbang OTORITATIF review_service.authorize (fungsi murni, tanpa DB):
+    boleh HANYA bila peninjau berwenang DAN bukan si pemohon."""
+    from ragcore.application.review_service import authorize
+    from ragcore.domain.users import PUBLIC, REGISTRY
+
+    bram = REGISTRY["NCS-0007"]   # Kepala Divisi SDM - peninjau
+    fitri = REGISTRY["NCS-0068"]  # Pengadaan, staf - pemohon
+    sinta = REGISTRY["NCS-0031"]  # TI pimpinan - BUKAN peninjau
+
+    assert authorize(bram, fitri.nip) is None          # boleh
+    # pemohon sendiri (Bram meninjau permintaan Bram) -> ditolak
+    assert "sendiri" in authorize(bram, bram.nip)
+    # bukan peninjau (staf) -> ditolak
+    assert "berwenang" in authorize(fitri, "NCS-0001")
+    # pimpinan TI bukan peninjau kebijakan -> ditolak
+    assert "berwenang" in authorize(sinta, fitri.nip)
+    # anonim -> ditolak
+    assert authorize(PUBLIC, fitri.nip) is not None

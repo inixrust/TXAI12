@@ -411,39 +411,78 @@ def _run_flow(inputs, thread_id: str):
                                              {"thread_id": thread_id}})
 
 
-def _flow_result() -> None:
-    hasil = st.session_state.get("alur_hasil")
-    if not hasil:
-        return
-    st.divider()
-    label = {"approved": "disetujui peninjau", "rejected": "ditolak peninjau",
-             "revised": "diminta revisi", "lolos": "lolos otomatis"}.get(
-                 hasil.get("status"), hasil.get("status") or "selesai")
-    st.markdown(f"**Hasil akhir — _{label}_:**")
-    st.markdown(hasil.get("answer_text") or "—")
-    if hasil.get("note"):
-        st.caption(f"Catatan peninjau: {hasil['note']}")
-    if st.button("Mulai percakapan baru"):
-        for k in ("alur_thread", "alur_tunda", "alur_hasil"):
-            st.session_state.pop(k, None)
-        st.rerun()
+def _review_card(person, rv) -> None:
+    """Kartu keputusan bagi PENINJAU. Penegakan sesungguhnya BUKAN di sini
+    (tombol) melainkan di review_service.apply_decision - lihat catatannya.
+    Kartu ini hanya menampilkan; keputusan diverifikasi ulang di lapis aplikasi.
+    """
+    from ragcore.application import review_service as RS
+
+    with st.container(border=True):
+        st.markdown(f"**Pertanyaan:** {rv.question}")
+        st.markdown(f"**Jawaban usulan:**\n\n{rv.answer_text}")
+        st.caption(f"Pemohon: {rv.requester_name or rv.requester_nip} · alasan: "
+                   f"_{rv.hold_reason}_ · sitasi {rv.coverage:.0%}"
+                   + (f" · sumber: {rv.source}" if rv.source else ""))
+        if rv.requester_nip == getattr(person, "nip", None):
+            st.info("Permintaan **Anda sendiri** — tak dapat Anda setujui "
+                    "(pemisahan tugas). Peninjau lain harus memutuskan.")
+            return
+        note = st.text_input("Catatan (opsional)", key=f"note-{rv.thread_id}")
+        kol = st.columns(3)
+        aksi = None
+        if kol[0].button("✓ Setujui", key=f"ok-{rv.thread_id}", type="primary"):
+            aksi = "approve"
+        if kol[1].button("✗ Tolak", key=f"no-{rv.thread_id}"):
+            aksi = "reject"
+        if kol[2].button("↻ Minta revisi", key=f"rev-{rv.thread_id}"):
+            aksi = "revise"
+        if aksi:
+            try:
+                with st.spinner("Menerapkan keputusan peninjau..."):
+                    RS.apply_decision(rv.thread_id, person, aksi, note)
+                audit.record("tinjau-alur", person, outcome=aksi,
+                             session=st.session_state.get("id_sesi"))
+                st.success("Keputusan diterapkan.")
+            except RS.ReviewDenied as e:
+                # Gerbang aplikasi menolak - misal peran berubah di tengah.
+                st.error(str(e))
+            st.rerun()
+
+
+def _own_card(rv) -> None:
+    """Kartu status bagi PEMOHON: menunggu, atau hasil yang sudah diputuskan."""
+    with st.container(border=True):
+        st.markdown(f"**Pertanyaan:** {rv.question}")
+        if rv.status == "pending":
+            st.warning("⏸ Menunggu persetujuan **peninjau berwenang** (pimpinan "
+                       "Divisi SDM atau Direksi). Anda tak bisa menyetujui vonis "
+                       "Anda sendiri.")
+            st.caption(f"Draf ditahan · alasan: _{rv.hold_reason}_")
+        else:
+            label = {"approved": "disetujui", "rejected": "ditolak",
+                     "revised": "diminta revisi"}.get(rv.status, rv.status)
+            oleh = f" oleh {rv.decided_by_name}" if rv.decided_by_name else ""
+            st.success(f"Sudah **{label}**{oleh}.")
+            st.markdown(f"**Jawaban:** {rv.answer_text}")
+            if rv.note:
+                st.caption(f"Catatan peninjau: {rv.note}")
 
 
 def _flow_panel(person) -> None:
     """Alur LangGraph berkeadaan (L10) dengan tinjauan manusia — di UI.
 
-    Beda dari tab 'Tanya' (jalur answer() sederhana): tiap percakapan di sini
-    punya thread_id, keadaannya tersimpan di Postgres, dan jawaban BERISIKO
-    berhenti menunggu persetujuan sebelum dikirim. Karena keadaan ada di basis
-    data, alur ini pulih meski proses mati di tengah - itulah inti L10, kini
-    bisa dilihat dan dijalankan, bukan sekadar lulus di test.
+    Keadaan graf hidup di Postgres (checkpointer), dan ANTREAN tinjauannya juga
+    di Postgres (flow_reviews, lewat application/review_service) - bukan di sesi
+    peramban. Maka peninjau mana pun, dari sesi mana pun, melihat antrean yang
+    sama; keputusan diverifikasi otoritatif di lapis aplikasi, bukan di UI.
 
     Retrieval di dalam graf memakai identitas pemohon (NIP) untuk RLS - lihat
     n_search_documents; tanpa itu graf mengambil sebagai pemilik yang kebal RLS.
     """
     import uuid
 
-    from langgraph.types import Command
+    from ragcore.application import review_service as RS
 
     st.subheader("Konsultasi kebijakan")
     st.caption(
@@ -452,105 +491,59 @@ def _flow_panel(person) -> None:
         "situasi Anda — **ditahan untuk disetujui peninjau** sebelum dirilis. "
         "Begitu juga jawaban yang sumbernya lemah atau belum diverifikasi.")
 
-    tunda = st.session_state.get("alur_tunda")
+    # --- Form pertanyaan (selalu ada) ---
+    with st.form("alur_tanya"):
+        q = st.text_input(
+            "Pertanyaan",
+            placeholder="mis. Apakah saya boleh mengambil cuti tahunan "
+                        "20 hari sekaligus?")
+        if st.form_submit_button("Kirim") and q.strip():
+            tid = f"alur-{uuid.uuid4().hex[:12]}"
+            st.session_state.pop("alur_langsung", None)
+            with st.spinner("Memproses pertanyaan Anda..."):
+                res = _run_flow(
+                    {"question": q, "nip": getattr(person, "nip", "")}, tid)
+            itr = res.get("__interrupt__")
+            if itr:
+                payload = dict(itr[0].value)
+                payload["answer_text"] = _screen_answer(
+                    payload.get("answer_text"))
+                # Antrean di Postgres - BUKAN sesi peramban. Peninjau lain
+                # (sesi lain) akan melihatnya; thread_id menaut ke checkpointer.
+                RS.record_hold(tid, person, payload)
+            else:
+                # Fakta / lolos otomatis - tak ada vonis untuk ditinjau.
+                st.session_state.alur_langsung = {
+                    "answer_text": _screen_answer(res.get("answer_text")),
+                    "status": res.get("status") or "lolos"}
+            st.rerun()
+    st.caption(
+        "Contoh **dijawab langsung**: _Berapa lama masa percobaan pegawai "
+        "baru?_ — Contoh **butuh persetujuan**: _Apakah saya boleh mengambil "
+        "cuti tahunan 20 hari sekaligus?_")
 
-    # --- Tidak ada tinjauan tertunda: form pertanyaan ---
-    if tunda is None:
-        with st.form("alur_tanya"):
-            q = st.text_input(
-                "Pertanyaan",
-                placeholder="mis. Apakah saya boleh mengambil cuti tahunan "
-                            "20 hari sekaligus?")
-            if st.form_submit_button("Kirim") and q.strip():
-                tid = f"alur-{uuid.uuid4().hex[:12]}"
-                st.session_state.alur_thread = tid
-                st.session_state.pop("alur_hasil", None)
-                with st.spinner("Memproses pertanyaan Anda..."):
-                    # Tanpa sakelar paksa: alur ditentukan aturan nyata
-                    # (penilaian/cakupan/sumber), bukan pilihan di UI.
-                    res = _run_flow(
-                        {"question": q, "nip": getattr(person, "nip", "")}, tid)
-                itr = res.get("__interrupt__")
-                if itr:
-                    payload = dict(itr[0].value)
-                    payload["answer_text"] = _screen_answer(
-                        payload.get("answer_text"))
-                    # Rekam PEMOHON: dipakai menegakkan pemisahan tugas -
-                    # penanya tak boleh menyetujui vonisnya sendiri (di bawah).
-                    payload["requester_nip"] = getattr(person, "nip", "")
-                    payload["requester_name"] = getattr(person, "name", "")
-                    st.session_state.alur_tunda = payload
-                else:
-                    st.session_state.alur_hasil = {
-                        "answer_text": _screen_answer(res.get("answer_text")),
-                        "status": res.get("status") or "lolos"}
-                st.rerun()
-        st.caption(
-            "Contoh **dijawab langsung**: _Berapa lama masa percobaan pegawai "
-            "baru?_ — Contoh **butuh persetujuan**: _Apakah saya boleh "
-            "mengambil cuti tahunan 20 hari sekaligus?_")
-        _flow_result()
-        return
+    langsung = st.session_state.get("alur_langsung")
+    if langsung:
+        st.divider()
+        st.markdown(f"**Jawaban:** {langsung['answer_text']}")
 
-    # --- Ada tinjauan tertunda: kartu keputusan ---
-    st.warning("⏸ Jawaban ditahan untuk ditinjau sebelum dikirim ke pemohon.")
-    st.markdown(f"**Pertanyaan:** {tunda.get('question')}")
-    st.markdown(f"**Jawaban usulan:**\n\n{tunda.get('answer_text')}")
-    st.caption(f"Alasan ditahan: _{tunda.get('hold_reason')}_ · cakupan sitasi "
-               f"{tunda.get('citation_coverage', 0):.0%}")
-    sumber = list(dict.fromkeys(s for s in (tunda.get("source") or []) if s))
-    if sumber:
-        st.caption("Sumber: " + ", ".join(sumber))
-
-    # PEMISAHAN TUGAS (C-06). Yang boleh memutuskan HANYA peninjau berwenang
-    # (pimpinan Divisi SDM atau Direksi, lihat users.is_reviewer), dan BUKAN si
-    # pemohon sendiri - yang meminta vonis tak boleh mengesahkan vonisnya.
-    # Kartu tetap tampil ke semua (agar pemohon tahu jawabannya ditahan), tetapi
-    # tombol keputusan hanya muncul bagi peninjau yang sah. Untuk melanjutkan,
-    # peninjau cukup MASUK; keadaan tertunda tersimpan di sesi/checkpointer.
-    pemohon_nip = tunda.get("requester_nip")
-    penanya_sendiri = bool(pemohon_nip) and getattr(person, "nip", None) == pemohon_nip
-    boleh_memutuskan = P.is_reviewer(person) and not penanya_sendiri
-
-    if not boleh_memutuskan:
-        if penanya_sendiri:
-            st.info("Anda mengajukan pertanyaan ini, jadi Anda **tidak dapat "
-                    "menyetujui vonis Anda sendiri**. Menunggu peninjau "
-                    "berwenang — pimpinan Divisi SDM atau Direksi — untuk masuk "
-                    "dan memutuskan.")
-        else:
-            st.info("Hanya **peninjau berwenang** (pimpinan Divisi SDM atau "
-                    "Direksi) yang dapat memutuskan vonis kepatuhan. Mintalah "
-                    "mereka masuk untuk meninjau.")
-        _flow_result()
-        return
-
-    st.success(f"Anda meninjau sebagai **{person.name}** ({person.unit}). "
-               f"Keputusan dicatat atas nama Anda, terpisah dari pemohon "
-               f"({tunda.get('requester_name') or pemohon_nip}).")
-    catatan = st.text_input("Catatan untuk revisi (opsional)", key="alur_catatan")
-    kolom = st.columns(3)
-    keputusan = None
-    if kolom[0].button("✓ Setujui", type="primary"):
-        keputusan = {"action": "approve"}
-    if kolom[1].button("✗ Tolak"):
-        keputusan = {"action": "reject"}
-    if kolom[2].button("↻ Minta revisi"):
-        keputusan = {"action": "revise", "note": catatan}
-
-    if keputusan is not None:
-        with st.spinner("Menerapkan keputusan peninjau..."):
-            res = _run_flow(Command(resume=keputusan),
-                            st.session_state.alur_thread)
-        st.session_state.alur_hasil = {
-            "answer_text": _screen_answer(res.get("answer_text")),
-            "status": res.get("status"), "note": res.get("note")}
-        st.session_state.pop("alur_tunda", None)
-        audit.record("tinjau-alur", person, outcome=keputusan["action"],
-                     session=st.session_state.get("id_sesi"))
-        st.rerun()
-
-    _flow_result()
+    # --- Antrean tinjauan (dari Postgres) ---
+    st.divider()
+    if P.is_reviewer(person):
+        antre = RS.pending()
+        st.markdown(f"### Antrean peninjauan · {len(antre)} menunggu")
+        st.caption(f"Anda **peninjau berwenang** ({person.unit}). Keputusan "
+                   "dicatat atas nama Anda, terpisah dari pemohon.")
+        if not antre:
+            st.caption("Tak ada jawaban yang menunggu tinjauan.")
+        for rv in antre:
+            _review_card(person, rv)
+    else:
+        milik = RS.own(getattr(person, "nip", ""))
+        if milik:
+            st.markdown("### Permintaan Anda")
+            for rv in milik:
+                _own_card(rv)
 
 
 # ------------------------------------------------------------------ utama

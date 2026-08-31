@@ -60,6 +60,25 @@ def open_checkpointer():
     return PostgresSaver.from_conn_string(config.PG_URL_DIRECT)
 
 
+def run_flow(inputs, thread_id: str):
+    """Jalankan/lanjutkan graf pada thread_id, kembalikan state akhir.
+
+    Checkpointer dibuka BARU tiap aksi, bukan disimpan di memori: itu justru
+    yang membuktikan keadaan hidup di Postgres, bukan di proses. Aksi apa pun -
+    pertanyaan baru ATAU melanjutkan (Command(resume=...)) setelah tinjauan -
+    memakai thread_id yang sama dan memungut keadaannya dari basis data.
+
+    Dipakai UI (mengajukan) DAN application/review_service (melanjutkan setelah
+    keputusan peninjau) - satu jalur, supaya penegakan keputusan hanya punya
+    SATU titik masuk ke graf.
+    """
+    with open_checkpointer() as cp:
+        cp.setup()
+        graph = build_graph(checkpointer=cp)
+        return graph.invoke(
+            inputs, config={"configurable": {"thread_id": thread_id}})
+
+
 # ----------------------------------------------------------------- simpul
 
 def _requester(state: State):
