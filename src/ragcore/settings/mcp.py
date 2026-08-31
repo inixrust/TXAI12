@@ -41,3 +41,15 @@ ORACLE_CONNECTION: str = secret(
     "ORACLE_CONNECTION",
     "rag_baca/Rahasia_Lab_2026@localhost:1521/FREEPDB1",
 )
+
+# AKUN OPERATOR TERPISAH (penutupan penuh F-02, oracle/04-operator-account.sql).
+#
+# rag_baca (di atas) tak boleh 'lihat semua' — set_operator menolaknya di DB.
+# Jalur non-produksi yang MEMANG operator (CLI, evaluasi) memakai koneksi ini,
+# yang menyimpan kredensial rag_operator. Bila belum disiapkan, keduanya jatuh
+# ke koneksi/kredensial rag_baca — perilaku lama, tanpa kejutan, dan set_operator
+# akan gagal-tutup (fail-closed) alih-alih diam-diam lihat-semua.
+MCP_CONNECTION_OPERATOR: str = os.getenv(
+    "MCP_CONNECTION_OPERATOR", MCP_CONNECTION_NAME)
+ORACLE_CONNECTION_OPERATOR: str = secret(
+    "ORACLE_CONNECTION_OPERATOR", ORACLE_CONNECTION)

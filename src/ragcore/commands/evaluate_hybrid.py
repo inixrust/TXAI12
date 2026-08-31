@@ -162,7 +162,11 @@ async def run(kind: str | None = None, limit: int | None = None,
 
     result, number = [], 0
     try:
-        async with hybrid_agent(quiet=True) as agent:
+        # operator=True: evaluasi menjalankan kasus TANPA login (person=None)
+        # yang perlu 'lihat semua'. Itu jalur OPERATOR (rag_operator), bukan
+        # produksi - jadi ia memakai koneksi operator, sementara /agent/ask tetap
+        # rag_baca hak-minimal. Lihat oracle/04-operator-account.sql.
+        async with hybrid_agent(quiet=True, operator=True) as agent:
             for group in per_users.values():
                 person = evaluation.case_user(group[0])
                 print(f"\n  === sebagai {person or 'tanpa login'} "

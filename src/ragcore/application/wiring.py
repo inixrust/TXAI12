@@ -38,15 +38,21 @@ def build_answer_service() -> AnswerService:
 
 
 class _McpToolSource:
-    """Adapter port ToolSource ke sesi MCP Oracle yang sesungguhnya."""
+    """Adapter port ToolSource ke sesi MCP Oracle yang sesungguhnya.
 
-    def __init__(self, quiet: bool = True):
+    `operator=False` (bawaan produksi) memakai koneksi rag_baca hak-minimal
+    yang tak dapat 'lihat semua'. Hanya jalur non-produksi (CLI operator) yang
+    menyalakan operator=True. Lihat oracle/04-operator-account.sql.
+    """
+
+    def __init__(self, quiet: bool = True, operator: bool = False):
         self._quiet = quiet
+        self._operator = operator
 
     def session(self):
         from ragcore.agent.hybrid import database_session
 
-        return database_session(quiet=self._quiet)
+        return database_session(quiet=self._quiet, operator=self._operator)
 
 
 class _FilesystemBlobStore:
@@ -78,9 +84,14 @@ def build_ingest_service():
                         task_queue=_PostgresTaskQueue())
 
 
-def build_agent_service(quiet: bool = True):
+def build_agent_service(quiet: bool = True, operator: bool = False):
     """Rakit AgentService dengan dependency produksi: model Ollama, sesi MCP
-    Oracle, dan create_agent langchain sebagai pabrik agent."""
+    Oracle, dan create_agent langchain sebagai pabrik agent.
+
+    `operator=False` (bawaan) = koneksi rag_baca hak-minimal untuk PRODUKSI
+    (/agent/ask selalu ber-identitas, tak pernah butuh 'lihat semua').
+    `operator=True` = koneksi rag_operator, hanya untuk CLI/pemeliharaan.
+    """
     from langchain.agents import create_agent
 
     from ragcore.application.agent_service import AgentService
@@ -88,6 +99,6 @@ def build_agent_service(quiet: bool = True):
 
     return AgentService(
         llm=get_llm(),
-        tool_source=_McpToolSource(quiet=quiet),
+        tool_source=_McpToolSource(quiet=quiet, operator=operator),
         agent_factory=create_agent,
     )

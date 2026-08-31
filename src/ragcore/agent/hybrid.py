@@ -431,8 +431,14 @@ def guard_db_access(tool, connect=None):
 
 
 @asynccontextmanager
-async def database_session(quiet: bool = True):
+async def database_session(quiet: bool = True, operator: bool = False):
     """Buka SATU sesi MCP, sambungkan ke basis data, hasilkan daftar tool.
+
+    `operator=False` (bawaan) memakai koneksi PRODUKSI hak-minimal (rag_baca):
+    hanya set_identity, set_operator ditolak DB. `operator=True` memakai koneksi
+    OPERATOR (rag_operator) yang boleh 'lihat semua' - HANYA untuk jalur non-
+    produksi (CLI, evaluasi). Lihat oracle/04-operator-account.sql. Bila koneksi
+    operator belum disiapkan, config menjatuhkannya ke koneksi rag_baca.
 
     SATU SESI ITU WAJIB, DAN INI JEBAKANNYA.
 
@@ -460,12 +466,15 @@ async def database_session(quiet: bool = True):
         tool = await load_mcp_tools(session)
         mapping = {a.name: a for a in tool}
 
+        conn_name = (config.MCP_CONNECTION_OPERATOR if operator
+                     else config.MCP_CONNECTION_NAME)
+
         async def connect():
             """Buka sambungan basis data pada sesi MCP yang sedang hidup."""
             if "connect" not in mapping:
                 return None
             return await mapping["connect"].ainvoke(
-                {"connection_name": config.MCP_CONNECTION_NAME})
+                {"connection_name": conn_name})
 
         if "connect" in mapping:
             result = await connect()
@@ -474,7 +483,7 @@ async def database_session(quiet: bool = True):
                 row = text.strip().splitlines()[:2]
                 print("  " + " / ".join(b.strip() for b in row if b.strip()))
             if "not found" in text.lower() or "tidak" in text.lower():
-                print(f"  Sambungan '{config.MCP_CONNECTION_NAME}' belum ada.")
+                print(f"  Sambungan '{conn_name}' belum ada.")
                 print("  Jalankan: python -m ragcore.commands.mcp "
                       "--simpan-sambungan")
         # Tool yang dipakai menjawab dibungkus agar tahan sesi yang
@@ -539,11 +548,14 @@ def filter_tools(db_tools: list, used: tuple[str, ...] = USED_MCP_TOOL) -> list:
 
 @asynccontextmanager
 async def hybrid_agent(quiet: bool = False, tool_all: bool = False,
-                        person=None):
+                        person=None, operator: bool = False):
     """Agent dengan tool dokumen + tool basis data, di dalam satu sesi MCP.
 
     `semua_alat=True` mematikan penyaringan — berguna di kelas untuk
     memperagakan sendiri apa yang terjadi pada permukaan tool yang lebar.
+
+    `operator=True` memakai koneksi rag_operator (boleh 'lihat semua') - untuk
+    jalur non-produksi seperti evaluasi/CLI yang menjalankan kasus tanpa login.
     """
     from langchain.agents import create_agent
 
@@ -552,7 +564,7 @@ async def hybrid_agent(quiet: bool = False, tool_all: bool = False,
     # SELURUH pemanggilan tool selama agent ini hidup.
     ACTIVE_USER.set(person)
 
-    async with database_session(quiet=quiet) as db_tools:
+    async with database_session(quiet=quiet, operator=operator) as db_tools:
         used = db_tools if tool_all else filter_tools(db_tools)
         if not quiet:
             print(f"  {len(used)} dari {len(db_tools)} tool MCP dipakai: "
@@ -574,7 +586,9 @@ async def _main(question: str, person=None) -> None:
     # akhir yang sudah disaring.
     from ragcore.application import build_agent_service
 
-    outcome = await build_agent_service(quiet=False).ask_once(
+    # CLI = jalur pemeliharaan/operator (person bawaannya None -> 'lihat
+    # semua'), jadi koneksi operator. Produksi /agent/ask tetap rag_baca.
+    outcome = await build_agent_service(quiet=False, operator=True).ask_once(
         question, identity=person)
 
     for message in outcome.steps:

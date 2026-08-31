@@ -157,6 +157,26 @@ def test_tabel_mentah_ditolak_tanpa_menyentuh_db():
     assert inner.sqls == []
 
 
+# ------------------------------------ pemisahan akun query/operator (F-02)
+
+def test_config_menyediakan_koneksi_operator_terpisah():
+    """Penutupan penuh F-02: ada koneksi + kredensial operator terpisah dari
+    akun query produksi (oracle/04-operator-account.sql)."""
+    from ragcore import config
+
+    assert hasattr(config, "MCP_CONNECTION_OPERATOR")
+    assert hasattr(config, "ORACLE_CONNECTION_OPERATOR")
+
+
+def test_tool_source_produksi_memakai_akun_hak_minimal():
+    """Produksi (/agent/ask) memakai akun rag_baca yang TAK BISA 'lihat semua';
+    hanya jalur non-produksi (CLI/eval) yang opt-in ke koneksi operator."""
+    from ragcore.application.wiring import _McpToolSource
+
+    assert _McpToolSource()._operator is False              # produksi = rag_baca
+    assert _McpToolSource(operator=True)._operator is True   # CLI/eval = rag_operator
+
+
 # ---------------------------------------------------- reconnect + re-scope
 
 class _FlakyTool:

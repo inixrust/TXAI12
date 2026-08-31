@@ -67,19 +67,30 @@ CREATE OR REPLACE PACKAGE BODY ncs.rag_scope AS
   END set_identity;
 
   PROCEDURE set_operator IS
+    v_user VARCHAR2(128) := SYS_CONTEXT('USERENV', 'SESSION_USER');
   BEGIN
-    -- Konteks operator/maintenance (CLI, BUKAN web anonim): lihat semua,
-    -- sejalan dengan connection_for(None) = pemilik di sisi aplikasi.
+    -- Konteks operator/maintenance (CLI, BUKAN web anonim): lihat semua.
     --
-    -- PERTAHANAN BERLAPIS (temuan pentest F-02). Guard aplikasi memvalidasi
-    -- SQL model SELECT-tunggal supaya set_operator tak bisa dipanggil dari
-    -- jalur model. Ini lapis KEDUA di basis data: begitu sebuah identitas
-    -- pemohon terpin di sesi ini (set_identity dipanggil guard SEBELUM tiap
-    -- query), eskalasi 'lihat semua' DITOLAK - walau validator aplikasi
-    -- tertembus dan `EXEC ncs.rag_scope.set_operator` sampai ke basis data,
-    -- ia gagal dan penyaringan per-unit tetap berlaku. set_operator hanya
-    -- berhasil pada sesi operator yang belum pernah terpin identitas (CLI
-    -- tepercaya), sejalan connection_for(None).
+    -- PENUTUPAN PENUH F-02 (oracle/04-operator-account.sql) - LAPIS PERTAMA:
+    -- hanya AKUN operator tepercaya yang boleh 'lihat semua'. Akun query
+    -- rag_baca DITOLAK di sini. Ini menutup residu yang ditemukan pentest:
+    -- pin (lapis kedua di bawah) hanya menahan eskalasi dari jalur APLIKASI,
+    -- tetapi kredensial rag_baca yang menyambung LANGSUNG pada sesi SEGAR
+    -- (pinned masih kosong) dulu masih bisa set_operator. Dengan cek akun ini,
+    -- set_operator gagal untuk rag_baca APA PUN keadaan sesinya. Pemisahan
+    -- dilakukan DI DALAM prosedur karena EXECUTE paket all-or-nothing: kedua
+    -- akun ber-EXECUTE atas rag_scope (perlu untuk set_identity/predicate),
+    -- jadi hanya set_operator sendiri yang bisa membedakannya.
+    IF v_user NOT IN ('RAG_OPERATOR', 'NCS', 'SYSTEM') THEN
+      RAISE_APPLICATION_ERROR(
+        -20003,
+        'set_operator ditolak: akun ' || v_user || ' bukan operator');
+    END IF;
+    -- PERTAHANAN BERLAPIS - LAPIS KEDUA (jalur aplikasi). Begitu identitas
+    -- pemohon terpin di sesi (set_identity dipanggil guard SEBELUM tiap query),
+    -- eskalasi 'lihat semua' DITOLAK - walau validator aplikasi tertembus dan
+    -- `EXEC ncs.rag_scope.set_operator` sampai ke basis data lewat sesi
+    -- operator, ia gagal dan penyaringan per-unit tetap berlaku.
     IF SYS_CONTEXT('rag_ctx', 'pinned') = 'Y' THEN
       RAISE_APPLICATION_ERROR(
         -20002,

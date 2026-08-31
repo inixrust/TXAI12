@@ -45,7 +45,9 @@ from ragcore.settings.documents import (
 from ragcore.settings.mcp import (
     MCP_COMMAND,
     MCP_CONNECTION_NAME,
+    MCP_CONNECTION_OPERATOR,
     ORACLE_CONNECTION,
+    ORACLE_CONNECTION_OPERATOR,
     SQLCL_HOME,
 )
 from ragcore.settings.models import (
@@ -138,6 +140,7 @@ __all__ = [
     "MAX_UPLOAD_PAGES",
     "MCP_COMMAND",
     "MCP_CONNECTION_NAME",
+    "MCP_CONNECTION_OPERATOR",
     "META",
     "MODEL_CHAT",
     "MODEL_EMBEDDING",
@@ -150,6 +153,7 @@ __all__ = [
     "N_FINAL",
     "OLLAMA_URL",
     "ORACLE_CONNECTION",
+    "ORACLE_CONNECTION_OPERATOR",
     "ORIGINAL_SOURCE",
     "OVERLAP",
     "PG_TABLE",

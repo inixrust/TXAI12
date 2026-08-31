@@ -1,7 +1,8 @@
 """Penyiapan server MCP Oracle (L7, L8).
 
     python -m ragcore.commands.mcp --alat               # daftar tool server
-    python -m ragcore.commands.mcp --simpan-sambungan   # sekali per mesin
+    python -m ragcore.commands.mcp --simpan-sambungan   # sekali per mesin (rag_baca)
+    python -m ragcore.commands.mcp --simpan-operator    # akun operator (rag_operator)
     python -m ragcore.commands.mcp --uji                # connect + satu query
 
 KENAPA --simpan-sambungan ADA. Tool `connect` pada server MCP hanya menerima
@@ -37,13 +38,21 @@ async def _list_tools() -> int:
     return 0
 
 
-async def _save_connection() -> int:
+async def _save_connection(operator: bool = False) -> int:
 
-    commands = (f"conn -save {config.MCP_CONNECTION_NAME} -savepwd "
-                f"{config.ORACLE_CONNECTION}")
-    print(f"  menyimpan sambungan '{config.MCP_CONNECTION_NAME}' "
-          f"sebagai {config.ORACLE_CONNECTION.split('/')[0]}")
+    # operator=True menyimpan sambungan AKUN OPERATOR (rag_operator) yang boleh
+    # 'lihat semua' - dipakai CLI/evaluasi. Bawaannya menyimpan akun query
+    # produksi (rag_baca). Lihat oracle/04-operator-account.sql.
+    name = (config.MCP_CONNECTION_OPERATOR if operator
+            else config.MCP_CONNECTION_NAME)
+    creds = (config.ORACLE_CONNECTION_OPERATOR if operator
+             else config.ORACLE_CONNECTION)
+    commands = f"conn -save {name} -savepwd {creds}"
+    print(f"  menyimpan sambungan '{name}' sebagai {creds.split('/')[0]}")
 
+    # Sesi dibuka dengan koneksi bawaan (rag_baca yang sudah ada); sqlcl_run
+    # hanya perlu sesi MCP hidup untuk menjalankan `conn -save`, bukan koneksi
+    # yang sedang disimpan itu sendiri.
     async with database_session(quiet=True) as tool:
         mapping = {a.name: a for a in tool}
         if "sqlcl_run" not in mapping:
@@ -54,7 +63,7 @@ async def _save_connection() -> int:
             if row.strip() and "mouse" not in row:
                 print("   ", row.strip()[:90])
         stored = mcp_text(await mapping["connections_list"].ainvoke({}))
-        exists = config.MCP_CONNECTION_NAME in stored
+        exists = name in stored
         print(f"\n  terdaftar sekarang: {'YA' if exists else 'TIDAK'}")
         return 0 if exists else 1
 
@@ -78,6 +87,8 @@ def main(argv=None) -> int:
         return asyncio.run(_list_tools())
     if "--simpan-sambungan" in argv:
         return asyncio.run(_save_connection())
+    if "--simpan-operator" in argv:
+        return asyncio.run(_save_connection(operator=True))
     if "--uji" in argv:
         return asyncio.run(_test())
     print(__doc__)
