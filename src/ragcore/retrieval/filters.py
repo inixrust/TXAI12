@@ -68,8 +68,26 @@ def for_chroma(filters: Filters) -> Filters | None:
     Terlihat sepele, tapi ini justru contoh bagus untuk kelas: pustaka sering
     punya aturan tak tertulis yang baru ketahuan saat dijalankan. Karena itu
     kode lab ini diuji, bukan hanya ditulis.
+
+    ATURAN TAK TERTULIS KEDUA - satu kunci vs banyak. Chroma menerima dict
+    SATU kunci ({"status": "berlaku"}) apa adanya, tetapi dict DUA kunci atau
+    lebih WAJIB dibungkus operator logika: {"$and": [{"status": ...},
+    {"klasifikasi": ...}]}. Tanpa pembungkus itu ia melempar
+
+        ValueError: Expected where to have exactly one operator, got
+        {'status': 'berlaku', 'klasifikasi': 'umum'} in query.
+
+    dan itu persis yang terjadi bagi STAF (bukan pimpinan): filter_for
+    menghasilkan {status, klasifikasi} - dua kunci - sehingga setiap
+    pertanyaan mereka lewat search_rules gagal diam-diam. PGVector
+    menerjemahkan dict multi-kunci menjadi klausa AND sendiri, jadi hanya
+    jalur Chroma yang menuntut pembungkus ini - lihat for_pgvector.
     """
-    return filters or None
+    if not filters:
+        return None
+    if len(filters) == 1:
+        return filters
+    return {"$and": [{k: v} for k, v in filters.items()]}
 
 
 def for_pgvector(filters: Filters) -> Filters | None:

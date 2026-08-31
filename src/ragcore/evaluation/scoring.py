@@ -69,6 +69,28 @@ def violates_forbidden(answer_text: str, case: dict) -> list[str]:
     return [t for t in (case.get("terlarang") or []) if str(t).lower() in low]
 
 
+# Batang penolakan kanonik. NOT_FOUND lengkap berakhir "...dalam dokumen yang
+# tersedia", tetapi agent MENYESUAIKAN kata bendanya dengan sumber yang ditanya:
+# untuk pertanyaan data ia menjawab "...dalam BASIS DATA yang tersedia", dan
+# itu BENAR - bahkan lebih tepat daripada "dokumen". Menuntut kata "dokumen"
+# persis menghukum penolakan yang tepat, tepat jenis penilai-galak yang
+# docstring modul ini berulang kali peringatkan: penilai yang menghukum jawaban
+# benar mengarahkan seluruh perbaikan berikutnya ke tempat yang salah.
+#
+# Yang STABIL - dan yang sungguh menandai penolakan - adalah batang ini, bukan
+# kata benda di ekornya. Terbukti pada evaluasi: "gaji pokok" dan "jumlah
+# karyawan 2024" ditolak dengan benar ("Informasi ini tidak ditemukan dalam
+# basis data yang tersedia") namun dinilai GAGAL hanya karena kata terakhirnya
+# bukan "dokumen".
+_REFUSAL_STEM = "informasi ini tidak ditemukan"
+
+
+def is_refusal(answer_text: str) -> bool:
+    """Apakah jawaban memuat kalimat penolakan kanonik, apa pun kata benda
+    sumber di ekornya (dokumen / basis data / arsip / sistem)."""
+    return _REFUSAL_STEM in (answer_text or "").lower()
+
+
 def refuses_correctly(answer_text: str, case: dict) -> bool:
     """Untuk kasus yang HARUS ditolak: menolak saja belum cukup.
 
@@ -79,7 +101,7 @@ def refuses_correctly(answer_text: str, case: dict) -> bool:
     hanya mencari kalimat penolakan.
     """
     content = (answer_text or "").lower()
-    if config.NOT_FOUND.lower() not in content:
+    if not is_refusal(content):
         return False
 
     leaks = ("tidak berhak", "tidak punya akses", "bukan hak anda",
@@ -125,7 +147,7 @@ def matches_reference(answer_text: str, reference: str, threshold: float = 0.6,
         )
 
     if config.NOT_FOUND in (reference or ""):
-        return config.NOT_FOUND in answer_text
+        return is_refusal(answer_text)
 
     reference_number = _number(reference)
     if reference_number and not reference_number <= _number(answer_text):
