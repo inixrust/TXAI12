@@ -46,6 +46,22 @@ SELECT COUNT(*) FROM ncs.v_pengadaan;   -- 9 baris
 DELETE FROM ncs.pengadaan;              -- ORA-00942
 ```
 
+```bash
+# 6. Autentikasi per-user (sebagai SYSTEM): tabel hash sandi + akun rag_auth
+sql system/Rahasia_Lab_2026@localhost:1521/FREEPDB1 @05-auth.sql
+
+# 7. Isi hash sandi argon2id per-user (sandi default lab 'lab2026', tiap user
+#    di-hash sendiri dengan salt sendiri). Butuh argon2-cffi + oracledb.
+python -m ragcore.commands.auth --seed
+```
+
+Setelah ini, login TIDAK LAGI memakai sandi yang di-hardcode di kode: tiap user
+punya hash argon2id sendiri di `ncs.pengguna_auth`, dibaca lewat akun hak-minimal
+`rag_auth` (yang tak bisa membaca dokumen/tabel sensitif — buktikan: `SELECT
+COUNT(*) FROM ncs.cuti;` sebagai `rag_auth` → ORA-00942, dan `rag_baca` tak bisa
+membaca `ncs.pengguna_auth` → ORA-00942). Ganti sandi satu user:
+`python -m ragcore.commands.auth --set NCS-0001`.
+
 ## Server MCP
 
 **Sambungan tersimpan itu WAJIB, bukan kemudahan.** Tool `connect` pada server

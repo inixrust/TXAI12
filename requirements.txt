@@ -42,6 +42,15 @@ langfuse>=3.0
 # Reranker (TX-AI11 modul B4). Berat untuk RAM 8 GB — boleh dilewati.
 sentence-transformers>=3.0
 
+# --- Hari 5: autentikasi per-user ---------------------------------------
+# Menggantikan sandi lab yang dulu di-hardcode & dibagi (satu sandi untuk
+# semua) dengan hash argon2id per-user di database.
+#   argon2-cffi : hash sandi argon2id (rekomendasi OWASP #1).
+#   oracledb    : driver thin (pure-Python, tanpa Oracle Client) untuk MEMBACA
+#                 hash dari Oracle lewat akun hak-minimal rag_auth.
+argon2-cffi>=23.1
+oracledb>=2.0
+
 # Antarmuka
 streamlit>=1.40
 

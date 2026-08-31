@@ -53,3 +53,15 @@ MCP_CONNECTION_OPERATOR: str = os.getenv(
     "MCP_CONNECTION_OPERATOR", MCP_CONNECTION_NAME)
 ORACLE_CONNECTION_OPERATOR: str = secret(
     "ORACLE_CONNECTION_OPERATOR", ORACLE_CONNECTION)
+
+# AKUN AUTENTIKASI hak-minimal (rag_auth, oracle/05-auth.sql).
+#
+# Dipakai HANYA oleh jalur login (domain/auth.py) untuk membaca hash sandi
+# argon2id dari ncs.pengguna_auth dan identitas dari ncs.karyawan. Sengaja
+# TERPISAH dari rag_baca: kredensial yang dipakai MENJAWAB pertanyaan tak boleh
+# bisa membaca hash sandi. Format easy-connect (user/sandi@host:port/service),
+# dibaca oleh python-oracledb thin - lihat domain/auth.py.
+ORACLE_CONNECTION_AUTH: str = secret(
+    "ORACLE_CONNECTION_AUTH",
+    "rag_auth/Rahasia_Lab_2026@localhost:1521/FREEPDB1",
+)

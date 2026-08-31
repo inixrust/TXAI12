@@ -20,8 +20,12 @@ CEK = "from ragcore import config; print('OK', config.PG_URL_APP.rsplit('@',1)[-
 
 def _impor(env_tambahan: dict) -> subprocess.CompletedProcess:
     env = {**os.environ, "PYTHONPATH": str(LAB / "src")}
-    # bersihkan agar tiap kasus berangkat dari keadaan yang sama
-    for k in ("RAG_ENV", "PG_URL", "PG_URL_DIRECT", "PG_URL_APP", "ORACLE_CONNECTION"):
+    # bersihkan agar tiap kasus berangkat dari keadaan yang sama. Termasuk akun
+    # Oracle turunan (OPERATOR, AUTH): tanpa dibersihkan, nilainya bisa BOCOR
+    # dari environment induk dan membuat kasus produksi lulus semu.
+    for k in ("RAG_ENV", "PG_URL", "PG_URL_DIRECT", "PG_URL_APP",
+              "ORACLE_CONNECTION", "ORACLE_CONNECTION_OPERATOR",
+              "ORACLE_CONNECTION_AUTH"):
         env.pop(k, None)
     env.update(env_tambahan)
     return subprocess.run([sys.executable, "-c", CEK], cwd=LAB, env=env,
@@ -48,6 +52,9 @@ def test_produksi_dengan_env_jalan():
         "RAG_ENV": "production",
         "PG_URL": real, "PG_URL_DIRECT": "postgresql://u:S3cr3t@db.prod:5432/x",
         "PG_URL_APP": real, "ORACLE_CONNECTION": "u/S3cr3t@ora.prod:1521/X",
+        # Akun Oracle turunan juga wajib di produksi (default diabaikan).
+        "ORACLE_CONNECTION_OPERATOR": "op/S3cr3t@ora.prod:1521/X",
+        "ORACLE_CONNECTION_AUTH": "au/S3cr3t@ora.prod:1521/X",
         # Produksi mewajibkan rahasia penanda-tangan sesi juga - default lab
         # yang diketahui umum bisa dipakai memalsukan sesi.
         "SESSION_SECRET": "prod-session-secret-abc123",
@@ -67,6 +74,10 @@ def test_produksi_tanpa_session_secret_gagal():
         "RAG_ENV": "production",
         "PG_URL": real, "PG_URL_DIRECT": "postgresql://u:S3cr3t@db.prod:5432/x",
         "PG_URL_APP": real, "ORACLE_CONNECTION": "u/S3cr3t@ora.prod:1521/X",
+        # Semua kredensial lain ADA - jadi satu-satunya yang kurang adalah
+        # SESSION_SECRET, dan galatnya harus menyebut itu.
+        "ORACLE_CONNECTION_OPERATOR": "op/S3cr3t@ora.prod:1521/X",
+        "ORACLE_CONNECTION_AUTH": "au/S3cr3t@ora.prod:1521/X",
     })
     assert r.returncode != 0, "produksi tanpa SESSION_SECRET seharusnya gagal"
     assert "SESSION_SECRET" in r.stderr

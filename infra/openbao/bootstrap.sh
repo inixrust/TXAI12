@@ -27,6 +27,7 @@ bao kv put secret/txai12 \
   PG_URL_APP="postgresql+psycopg://rag_app:GANTI@pg-txai12:5432/korpus" \
   ORACLE_CONNECTION="rag_baca/GANTI@oracle-txai12:1521/FREEPDB1" \
   ORACLE_CONNECTION_OPERATOR="rag_operator/GANTI@oracle-txai12:1521/FREEPDB1" \
+  ORACLE_CONNECTION_AUTH="rag_auth/GANTI@oracle-txai12:1521/FREEPDB1" \
   SESSION_SECRET="$(head -c 32 /dev/urandom | base64)"
 
 # 3) Kebijakan baca-saja untuk aplikasi.

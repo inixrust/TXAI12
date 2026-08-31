@@ -26,7 +26,6 @@ dari "aplikasi lupa menyaring" menjadi "model dibujuk mengaku unit lain".
 """
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -108,20 +107,46 @@ REGISTRY: dict[str, User] = {
     "NCS-0001": User("NCS-0001", "Chandra Halim", "Direksi", MANAGER_ROLE),
 }
 
-# Kata sandi lab, sama untuk semua. Disimpan sebagai hash supaya bentuk
-# kodenya benar sejak awal — bukan karena hash SHA-256 polos ini aman untuk
-# produksi. Untuk produksi: bcrypt, scrypt, atau argon2, dengan salt.
-_LAB_PASSWORD = hashlib.sha256(b"lab2026").hexdigest()
+# Verifikator sandi. Default (None) berarti jalur SUNGGUHAN: hash argon2id
+# per-user di database (domain.auth.verify). Bisa DISUNTIK untuk pengujian
+# lewat set_verifier() supaya tes TIDAK menyentuh Oracle - persis seperti
+# IngestService yang menyuntik blob store palsu. Sandi lab yang dulu di-hardcode
+# di sini (satu SHA-256 untuk semua) SUDAH DIHAPUS: tak ada lagi sandi di kode.
+_verifier = None  # Callable[[str, str], object] | None
+
+
+def set_verifier(fn) -> None:
+    """Ganti verifikator sandi (untuk tes). fn(nip, password) -> truthy bila
+    cocok. Panggil set_verifier(None) untuk kembali ke jalur database."""
+    global _verifier
+    _verifier = fn
 
 
 def login(nip: str, password: str) -> User | None:
-    """Kembalikan Pengguna bila NIP dan sandinya cocok, None bila tidak."""
-    person = REGISTRY.get((nip or "").strip().upper())
-    if person is None:
+    """Kembalikan Pengguna bila NIP dan sandinya cocok, None bila tidak.
+
+    Sandi diverifikasi terhadap hash argon2id PER-USER di database (lewat akun
+    hak-minimal rag_auth). Identitas nama/unit diambil LIVE dari ncs.karyawan;
+    PERAN (staf/pimpinan) dari direktori teruji REGISTRY - karena peran tak bisa
+    disimpulkan dari `golongan` (lihat is_reviewer & test_flow). NIP yang ada di
+    karyawan tapi belum di REGISTRY tetap boleh masuk, dengan peran staf
+    (fail-closed).
+    """
+    key = (nip or "").strip().upper()
+
+    if _verifier is not None:                      # jalur tes (tanpa Oracle)
+        if not _verifier(key, password or ""):
+            return None
+        return REGISTRY.get(key)
+
+    from ragcore.domain import auth
+
+    ident = auth.verify(key, password or "")
+    if ident is None:
         return None
-    if hashlib.sha256(password.encode()).hexdigest() != _LAB_PASSWORD:
-        return None
-    return person
+    base = REGISTRY.get(key)
+    role = base.role if base else STAFF_ROLE
+    return User(key, ident.nama, ident.unit, role)
 
 
 def demo_users() -> list[User]:
