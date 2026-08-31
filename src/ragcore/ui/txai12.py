@@ -731,11 +731,14 @@ def _upload_panel(person) -> None:
     if not task:
         st.caption("Tidak ada unggahan yang sedang diproses.")
         return
+    st.caption("**Potongan** = jumlah chunk teks hasil pemecahan dokumen; tiap "
+               "chunk diberi embedding dan bisa muncul sebagai sumber jawaban.")
     for t in task:
         badge = BADGE.get(t["status"], t["status"])
         row = f"{badge} · **{t['nama_berkas']}**"
         if t["potongan"]:
-            row += f" · {t['potongan']} potongan"
+            n = t["potongan"]
+            row += f" · terindeks **{n} potongan** (chunk)"
         st.markdown(row)
         if t["pesan"]:
             # Sebab kegagalan ditampilkan ke PENGUNGGAH, bukan hanya ke log
