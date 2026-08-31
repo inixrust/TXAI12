@@ -475,6 +475,10 @@ def _flow_panel(person) -> None:
                     payload = dict(itr[0].value)
                     payload["answer_text"] = _screen_answer(
                         payload.get("answer_text"))
+                    # Rekam PEMOHON: dipakai menegakkan pemisahan tugas -
+                    # penanya tak boleh menyetujui vonisnya sendiri (di bawah).
+                    payload["requester_nip"] = getattr(person, "nip", "")
+                    payload["requester_name"] = getattr(person, "name", "")
                     st.session_state.alur_tunda = payload
                 else:
                     st.session_state.alur_hasil = {
@@ -498,6 +502,32 @@ def _flow_panel(person) -> None:
     if sumber:
         st.caption("Sumber: " + ", ".join(sumber))
 
+    # PEMISAHAN TUGAS (C-06). Yang boleh memutuskan HANYA peninjau berwenang
+    # (pimpinan Divisi SDM atau Direksi, lihat users.is_reviewer), dan BUKAN si
+    # pemohon sendiri - yang meminta vonis tak boleh mengesahkan vonisnya.
+    # Kartu tetap tampil ke semua (agar pemohon tahu jawabannya ditahan), tetapi
+    # tombol keputusan hanya muncul bagi peninjau yang sah. Untuk melanjutkan,
+    # peninjau cukup MASUK; keadaan tertunda tersimpan di sesi/checkpointer.
+    pemohon_nip = tunda.get("requester_nip")
+    penanya_sendiri = bool(pemohon_nip) and getattr(person, "nip", None) == pemohon_nip
+    boleh_memutuskan = P.is_reviewer(person) and not penanya_sendiri
+
+    if not boleh_memutuskan:
+        if penanya_sendiri:
+            st.info("Anda mengajukan pertanyaan ini, jadi Anda **tidak dapat "
+                    "menyetujui vonis Anda sendiri**. Menunggu peninjau "
+                    "berwenang — pimpinan Divisi SDM atau Direksi — untuk masuk "
+                    "dan memutuskan.")
+        else:
+            st.info("Hanya **peninjau berwenang** (pimpinan Divisi SDM atau "
+                    "Direksi) yang dapat memutuskan vonis kepatuhan. Mintalah "
+                    "mereka masuk untuk meninjau.")
+        _flow_result()
+        return
+
+    st.success(f"Anda meninjau sebagai **{person.name}** ({person.unit}). "
+               f"Keputusan dicatat atas nama Anda, terpisah dari pemohon "
+               f"({tunda.get('requester_name') or pemohon_nip}).")
     catatan = st.text_input("Catatan untuk revisi (opsional)", key="alur_catatan")
     kolom = st.columns(3)
     keputusan = None

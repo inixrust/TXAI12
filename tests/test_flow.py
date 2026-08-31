@@ -71,3 +71,27 @@ def test_requester_fail_closed_nip_asing():
     assert _requester({"nip": ""}) is None
     assert _requester({}) is None
     assert _requester({"nip": "NCS-XXXX-asing"}) is PUBLIC
+
+
+# --------------------------------- SIAPA yang boleh meninjau (pemisahan tugas)
+
+def test_peninjau_hanya_sdm_pimpinan_dan_direksi():
+    """Vonis kepatuhan hanya boleh disetujui pemilik kebijakan: pimpinan Divisi
+    SDM (pemilik SOP kepegawaian) atau Direksi. Bukan staf, bukan IT."""
+    from ragcore.domain.users import REGISTRY, is_reviewer
+
+    assert is_reviewer(REGISTRY["NCS-0007"])   # Bramantyo - Kepala Divisi SDM
+    assert is_reviewer(REGISTRY["NCS-0001"])   # Chandra - Direksi
+    # BUKAN peninjau:
+    assert not is_reviewer(REGISTRY["NCS-0012"])  # Andini - SDM tapi STAF
+    assert not is_reviewer(REGISTRY["NCS-0031"])  # Sinta - pimpinan tapi TI (IT)
+    assert not is_reviewer(REGISTRY["NCS-0068"])  # Fitri - Pengadaan, staf
+
+
+def test_publik_dan_none_bukan_peninjau():
+    """Fail-closed: anonim / tanpa identitas / dict lama bukan peninjau."""
+    from ragcore.domain.users import PUBLIC, is_reviewer
+
+    assert not is_reviewer(PUBLIC)
+    assert not is_reviewer(None)
+    assert not is_reviewer({"peran": "pimpinan", "unit": "Divisi SDM"})

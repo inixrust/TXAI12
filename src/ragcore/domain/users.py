@@ -43,6 +43,14 @@ _UNIT_OK = re.compile(r"[\w .\-]{1,64}", re.UNICODE)
 STAFF_ROLE = "staf"
 MANAGER_ROLE = "pimpinan"
 
+# Unit yang BERWENANG meninjau vonis kepatuhan yang ditahan alur Konsultasi
+# (human-in-the-loop, L10). Divisi SDM memiliki SOP kepegawaian (SOP-01:
+# "disusun Divisi SDM, disahkan Direktur Utama"); Direksi mengesahkan. Unit
+# lain - TERMASUK IT - tidak meninjau vonis kebijakan: mereka MEMAKAI sistemnya,
+# bukan MEMILIKI putusannya. Di produksi ini datang dari peran IdP/tabel
+# kepegawaian, bukan daftar unit di kode.
+REVIEWER_UNITS = ("Direksi", "Divisi SDM")
+
 
 @dataclass(frozen=True)
 class User:
@@ -119,6 +127,22 @@ def login(nip: str, password: str) -> User | None:
 def demo_users() -> list[User]:
     """Semua users, diurutkan — untuk pemilih di ui kelas."""
     return sorted(REGISTRY.values(), key=lambda p: (p.unit, p.name))
+
+
+def is_reviewer(person: object) -> bool:
+    """Apakah orang ini BERWENANG menyetujui vonis kepatuhan yang ditahan?
+
+    Peran yang MEMILIKI kebijakan: pimpinan Divisi SDM (pemilik SOP kepegawaian)
+    atau Direksi. Staf tidak; unit lain - termasuk IT - tidak. Ini separuh dari
+    pemisahan tugas; separuh lain ditegakkan di UI: si PENANYA tak boleh
+    menyetujui vonisnya sendiri, sekalipun ia kebetulan seorang peninjau.
+
+    PUBLIC, None, dan bentuk dict lama bukan peninjau (fail-closed) - hanya
+    User sungguhan dengan peran pimpinan di unit yang berwenang.
+    """
+    return (isinstance(person, User)
+            and person.manager
+            and person.unit in REVIEWER_UNITS)
 
 
 # ---------------------------------------------------------------- sambungan
