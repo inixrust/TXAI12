@@ -677,8 +677,10 @@ def _upload_panel(person) -> None:
     from ..ingest import queue
 
     st.subheader("Unggah dokumen")
-    st.caption("Berkas disimpan dan dimasukkan ke queue. Pengindeksan "
-               "dikerjakan pekerja di latar — halaman ini tidak menunggu.")
+    st.caption(
+        f"Jenis diterima: **PDF, MD, TXT** · maksimum **{config.MAX_UPLOAD_MB:.0f} "
+        f"MB** per berkas. Berkas disimpan lalu diproses pekerja di latar — "
+        "halaman ini tidak menunggu.")
 
     file = st.file_uploader("Pilih berkas", type=["pdf", "md", "txt"])
     column = st.columns(2)

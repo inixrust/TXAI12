@@ -1,0 +1,8 @@
+# Setelan Streamlit untuk UI TX-AI12.
+[server]
+# Selaraskan batas unggah widget dengan penegakan SERVER (blob.check_size =
+# config.MAX_UPLOAD_MB, saat ini 25 MB). Tanpa ini, widget default 200 MB:
+# berkas 26-200 MB terlanjur terkirim lalu ditolak server - transfer sia-sia.
+# JAGA nilainya sama dengan config.MAX_UPLOAD_MB. Penegakan sebenarnya tetap di
+# blob.check_size (berlaku UI+API+CLI); ini hanya menolak lebih awal di UI.
+maxUploadSize = 25
