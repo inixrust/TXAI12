@@ -295,27 +295,53 @@ def wrap_reconnect(tool, connect):
 
 
 _SELECT_ONLY = re.compile(r"^\s*(select|with)\b", re.IGNORECASE)
-_SQL_FORBIDDEN = ("begin", "declare", "call ", "execute ", "exec ", "dbms_",
-                  "grant ", "insert ", "update ", "delete ", "merge ",
-                  "alter ", "drop ", "create ", "rag_scope")
+_SQL_FORBIDDEN = (
+    # Non-SELECT / PL-SQL / eskalasi scope.
+    "begin", "declare", "call ", "execute ", "exec ", "dbms_",
+    "grant ", "insert ", "update ", "delete ", "merge ",
+    "alter ", "drop ", "create ", "rag_scope",
+    # Hardening C-01 - referensi TABEL MENTAH (bukan view) dan KATALOG SISTEM.
+    # Grant DB rag_baca sudah menutup ini (hanya SELECT atas 5 view; selain itu
+    # ORA-00942), tetapi ini lapis kedua di aplikasi: ditolak lebih awal,
+    # DICATAT, dan tak pernah menyentuh basis data. Bentuk terkualifikasi
+    # "ncs.cuti" TIDAK muncul pada view "ncs.v_cuti" (ada "v_" di antaranya),
+    # jadi aman dari false-positive terhadap kueri view yang sah.
+    "ncs.karyawan", "ncs.cuti", "ncs.lembur", "ncs.pengadaan", "ncs.sppd",
+    "sys.", "dba_", "v$", "gv$", "utl_", "owa_", "all_tab", "all_source",
+    "all_users", "user_tab", "information_schema",
+)
 _NIP_OK = re.compile(r"^[A-Za-z0-9-]{1,16}$")
 
 
-def _is_safe_select(sql: str) -> bool:
-    """SATU perintah SELECT, tanpa blok PL/SQL atau pemisah statement.
+def _unsafe_reason(sql: str) -> str | None:
+    """Sebab sebuah SQL DITOLAK, atau None bila ia SELECT tunggal yang aman.
 
-    Ini batas keamanannya: karena model HANYA boleh SELECT, ia tak bisa
-    memanggil ncs.rag_scope untuk mengganti konteks penyaring ke unit lain.
-    VPD tetap menyaring apa pun yang lolos - ini menutup satu-satunya jalur
-    yang bisa MENGUBAH penyaringnya.
+    Mengembalikan SEBAB, bukan sekadar bool, supaya penolakan bisa DICATAT
+    (hardening C-05): percobaan yang ditolak di lapis ini adalah peristiwa
+    keamanan yang layak terlihat, bukan didiamkan.
     """
     s = (sql or "").strip().rstrip(";").strip()
     if not s or not _SELECT_ONLY.match(s):
-        return False
+        return "bukan SELECT/WITH tunggal"
     if ";" in s:                                   # sisa ; = banyak statement
-        return False
+        return "banyak pernyataan (;)"
     low = s.lower()
-    return not any(f in low for f in _SQL_FORBIDDEN)
+    for f in _SQL_FORBIDDEN:
+        if f in low:
+            return f"token terlarang: {f.strip()}"
+    return None
+
+
+def _is_safe_select(sql: str) -> bool:
+    """SATU perintah SELECT, tanpa blok PL/SQL, pemisah statement, tabel mentah,
+    atau katalog sistem.
+
+    Ini batas keamanan lapis aplikasi: karena model HANYA boleh SELECT atas
+    view yang diizinkan, ia tak bisa memanggil ncs.rag_scope untuk mengganti
+    konteks penyaring, menulis, maupun mengintip tabel mentah/katalog. VPD dan
+    grant DB tetap menegakkan di bawahnya - ini menutup jalurnya lebih awal.
+    """
+    return _unsafe_reason(sql) is None
 
 
 def _scope_sql(person) -> str:
@@ -371,13 +397,25 @@ def guard_db_access(tool, connect=None):
         # PUBLIC (bukan None) lewat _resolve_identity.
         person = ACTIVE_USER.get()
         if person is PUBLIC:
+            # Peristiwa keamanan (hardening C-05): percobaan kueri basis data
+            # tanpa identitas terverifikasi - dicatat, bukan didiamkan.
+            log.warning("guard_db: TOLAK PUBLIC - kueri DB tanpa login")
             return ("DITOLAK: kueri basis data karyawan memerlukan login. "
                     "Tanpa identitas terverifikasi hanya dokumen berklasifikasi "
                     "umum yang dapat diakses.")
-        if not _is_safe_select(kwargs.get("sql", "")):
-            return ("DITOLAK: hanya SATU perintah SELECT yang dijalankan di "
-                    "jalur ini - blok PL/SQL, banyak-pernyataan, atau perintah "
-                    "selain SELECT tidak diizinkan.")
+        sebab = _unsafe_reason(kwargs.get("sql", ""))
+        if sebab is not None:
+            # SQL yang ditolak validator adalah sinyal keamanan yang paling
+            # berharga dicatat: ia menandai upaya menulis, blok PL/SQL, atau
+            # menyentuh tabel mentah/katalog. Cuplikan disingkat agar log tak
+            # membengkak.
+            sql_cuplik = " ".join((kwargs.get("sql") or "").split())[:160]
+            log.warning("guard_db: TOLAK SQL (%s) oleh %s | %s",
+                        sebab, getattr(person, "nip", person), sql_cuplik)
+            return ("DITOLAK: hanya SATU perintah SELECT atas view yang "
+                    "diizinkan yang dijalankan di jalur ini - blok PL/SQL, "
+                    "banyak-pernyataan, tabel mentah/katalog sistem, atau "
+                    "perintah selain SELECT tidak diizinkan.")
         result = await _scope_then_query(person, kwargs)
         if connect is not None and session_lost(mcp_text(result)):
             await connect()

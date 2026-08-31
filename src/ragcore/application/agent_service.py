@@ -31,6 +31,8 @@ alat ukur berada di bawah use-case produk, bukan di atasnya.
 """
 from __future__ import annotations
 
+import asyncio
+import os
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
@@ -39,7 +41,32 @@ from typing import Any, Protocol
 from ragcore.agent.tools_hybrid import ACTIVE_USER, SYSTEM_PROMPT, search_rules
 from ragcore.domain.guard import screen
 from ragcore.evaluation.hybrid import tools_called
+from ragcore.log import get_logger
 from ragcore.tracing import invoke_config
+
+log = get_logger(__name__)
+
+# PAGAR SUMBER DAYA DI JALUR PRODUKSI (hardening C-04).
+#
+# Harness evaluasi sudah membatasi langkah dan waktu tiap kasus, tetapi jalur
+# PRODUKSI (/agent/ask -> AgentRunner.ask) sebelumnya memanggil ainvoke tanpa
+# batas apa pun: agent yang melingkar memanggil tool bisa berjalan tak
+# berujung, dan pertanyaan yang menggantung menahan sumber daya server tanpa
+# pernah menjawab. Keduanya dibedakan sebabnya karena tindakannya berbeda:
+#
+#   recursion_limit -> agen yang MELINGKAR berhenti sendiri (bukan menghabiskan
+#                      seluruh timeout), gagal dengan cara yang bisa dikenali.
+#   timeout         -> model yang terlalu LAMBAT dihentikan; jawaban yang tak
+#                      pernah datang memang tak berguna bagi users.
+#
+# Keduanya bisa disetel lewat lingkungan untuk perangkat yang lebih lambat.
+STEP_LIMIT = int(os.getenv("AGENT_STEP_LIMIT", "15"))
+TIMEOUT_DETIK = int(os.getenv("AGENT_TIMEOUT_DETIK", "120"))
+
+# Jawaban yang disajikan saat pagar di atas menyala. Bukan galat mentah:
+# users mendapat kalimat yang jujur, bukan stack trace.
+_OVER_LIMIT = ("Permintaan tidak dapat diselesaikan dalam batas waktu atau "
+               "langkah yang ditetapkan. Coba persempit pertanyaannya.")
 
 
 class ToolSource(Protocol):
@@ -92,10 +119,33 @@ class AgentRunner:
         # berikutnya.
         token = ACTIVE_USER.set(identity)
         try:
-            result = await self._agent.ainvoke(
-                {"messages": [{"role": "user", "content": question}]},
-                config=invoke_config("hibrida", question=question),
-            )
+            # recursion_limit: batas langkah agent (agen melingkar berhenti
+            # sendiri). timeout: batas waktu keseluruhan (model terlalu lambat
+            # dihentikan). Lihat STEP_LIMIT / TIMEOUT_DETIK di atas.
+            config = {**invoke_config("hibrida", question=question),
+                      "recursion_limit": STEP_LIMIT}
+            try:
+                result = await asyncio.wait_for(
+                    self._agent.ainvoke(
+                        {"messages": [{"role": "user", "content": question}]},
+                        config=config,
+                    ),
+                    timeout=TIMEOUT_DETIK,
+                )
+            except (TimeoutError, asyncio.TimeoutError):
+                log.warning("agent /ask lewat batas %ss - dihentikan",
+                            TIMEOUT_DETIK)
+                return AgentOutcome(answer=_OVER_LIMIT, tools_called=[], steps=[])
+            except Exception as e:
+                # GraphRecursionError (langgraph) dan sejenisnya: agen melingkar
+                # melampaui STEP_LIMIT. Dikembalikan sebagai jawaban jujur, bukan
+                # 500 - dan dicatat agar loop tool bisa didiagnosis.
+                if "recursion" in type(e).__name__.lower():
+                    log.warning("agent /ask lewat batas %d langkah: %s",
+                                STEP_LIMIT, type(e).__name__)
+                    return AgentOutcome(answer=_OVER_LIMIT, tools_called=[],
+                                        steps=[])
+                raise
             messages = result["messages"]
             called = tools_called(messages)
             # Jawaban AKHIR melewati guard keluaran (LLM07). Giliran perantara

