@@ -32,17 +32,17 @@ SQLCL_HOME: str = os.getenv("SQLCL_HOME", "")
 #
 #     python -m ragcore.commands.mcp --simpan-sambungan
 #
-# Lihat oracle/README.md untuk alasannya dan untuk cara manualnya.
+# Lihat infra/oracle/README.md untuk alasannya dan untuk cara manualnya.
 MCP_CONNECTION_NAME: str = os.getenv("MCP_CONNECTION_NAME", "agentlab")
 
 # Kredensial yang disimpan. Akun HANYA-BACA (rag_baca), bukan pemilik data —
-# lihat empat lapis pembatas di oracle/02-restrictions.sql.
+# lihat empat lapis pembatas di infra/oracle/02-restrictions.sql.
 ORACLE_CONNECTION: str = secret(
     "ORACLE_CONNECTION",
     "rag_baca/Rahasia_Lab_2026@localhost:1521/FREEPDB1",
 )
 
-# AKUN OPERATOR TERPISAH (penutupan penuh F-02, oracle/04-operator-account.sql).
+# AKUN OPERATOR TERPISAH (penutupan penuh F-02, infra/oracle/04-operator-account.sql).
 #
 # rag_baca (di atas) tak boleh 'lihat semua' — set_operator menolaknya di DB.
 # Jalur non-produksi yang MEMANG operator (CLI, evaluasi) memakai koneksi ini,
@@ -54,7 +54,7 @@ MCP_CONNECTION_OPERATOR: str = os.getenv(
 ORACLE_CONNECTION_OPERATOR: str = secret(
     "ORACLE_CONNECTION_OPERATOR", ORACLE_CONNECTION)
 
-# AKUN AUTENTIKASI hak-minimal (rag_auth, oracle/05-auth.sql).
+# AKUN AUTENTIKASI hak-minimal (rag_auth, infra/oracle/05-auth.sql).
 #
 # Dipakai HANYA oleh jalur login (domain/auth.py) untuk membaca hash sandi
 # argon2id dari ncs.pengguna_auth dan identitas dari ncs.karyawan. Sengaja

@@ -42,7 +42,7 @@ async def _save_connection(operator: bool = False) -> int:
 
     # operator=True menyimpan sambungan AKUN OPERATOR (rag_operator) yang boleh
     # 'lihat semua' - dipakai CLI/evaluasi. Bawaannya menyimpan akun query
-    # produksi (rag_baca). Lihat oracle/04-operator-account.sql.
+    # produksi (rag_baca). Lihat infra/oracle/04-operator-account.sql.
     name = (config.MCP_CONNECTION_OPERATOR if operator
             else config.MCP_CONNECTION_NAME)
     creds = (config.ORACLE_CONNECTION_OPERATOR if operator

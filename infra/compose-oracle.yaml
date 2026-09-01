@@ -1,8 +1,8 @@
 # Oracle Database Free 23ai untuk lab basis data (L8, L9).
-# Penyiapan pertama makan 5-10 menit. Tunggu sampai healthcheck hijau:
-#
-#   docker compose -f compose-oracle.yaml up -d
-#   docker compose -f compose-oracle.yaml logs -f oracle
+# Penyiapan pertama makan 5-10 menit. Tunggu sampai healthcheck hijau.
+# Biasanya dinyalakan lewat `docker compose up -d` di akar (compose.yaml
+# meng-include berkas ini). Berdiri sendiri:
+#   docker compose -f infra/compose-oracle.yaml up -d
 services:
   oracle:
     image: container-registry.oracle.com/database/free:latest
@@ -16,6 +16,7 @@ services:
       - "127.0.0.1:1521:1521"
     volumes:
       - oradata:/opt/oracle/oradata
+    networks: [dbnet]              # jaringan bersama supaya app menjangkau via nama
     healthcheck:
       # healthcheck.sh TIDAK ADA di image 26ai — perintah bawaan yang lazim
       # dikutip di banyak contoh justru menghasilkan "unhealthy" permanen
@@ -29,3 +30,8 @@ services:
 
 volumes:
   oradata:
+
+networks:
+  dbnet:
+    external: true
+    name: txai12-net

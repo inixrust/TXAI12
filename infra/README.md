@@ -2,9 +2,21 @@
 
 Kerangka pengerasan untuk menjalankan TX-AI12 di luar lab: **manajemen rahasia
 (OpenBao)** menggantikan rahasia plaintext di `.env`, dan **satu pintu masuk
-ber-TLS (Caddy)** di depan aplikasi. Ini melengkapi compose yang sudah ada
-(`compose-oracle.yaml`, `compose-pgvector.yaml`, stack Langfuse) - bukan
-menggantikannya.
+ber-TLS (Caddy)** di depan aplikasi.
+
+**Struktur:** seluruh DEPLOYMENT ada di folder ini (`infra/`) — compose DB
+(`compose-oracle.yaml`, `compose-pgvector.yaml`), stack (`compose-infra.yaml`),
+`Dockerfile`, `openbao/`, `Caddyfile`, dan SQL Oracle (`oracle/`). KODE aplikasi
+ada di akar (`src/`, `apps/`). `compose.yaml` di akar meng-`include` ketiga
+compose sebagai SATU project `txai12`:
+
+```sh
+docker network create txai12-net     # sekali - jaringan bersama app<->DB
+docker compose up -d                 # seluruh stack (Oracle+pgvector+OpenBao+Caddy+app)
+```
+
+Tiap bagian tetap bisa dijalankan sendiri dengan `-f infra/<berkas>` (lihat
+komentar di tiap compose). Stack Langfuse dikelola terpisah.
 
 Ini **kerangka**, bukan tombol satu-klik. Bagian yang sudah nyata & teruji ada
 di sisi aplikasi (loader OpenBao + fallback env, lihat `settings/security.py`

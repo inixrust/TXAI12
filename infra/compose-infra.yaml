@@ -1,11 +1,11 @@
-# Kerangka infra produksi TX-AI12 (on-prem, single-node) di atas Docker.
-# Melengkapi compose-oracle.yaml + compose-pgvector.yaml + stack Langfuse yang
-# sudah ada. INI KERANGKA - baca infra/README.md dulu untuk langkah bootstrap
-# (init & unseal OpenBao, sertifikat, wiring app) dan batasannya.
+# Stack infra TX-AI12 (OpenBao + Caddy + app) di atas Docker. Biasanya di-include
+# oleh compose.yaml di akar (satu project `txai12`, bersama Oracle + pgvector).
+# Baca infra/README.md untuk bootstrap (init & unseal OpenBao, sertifikat).
 #
+# Berdiri sendiri (project dari nama folder, tanpa DB):
 #   docker compose -f infra/compose-infra.yaml up -d
-name: txai12-infra
-
+# Nama project TIDAK di-set di sini supaya saat di-include, nama dari akar
+# (txai12) yang berlaku - bukan nama yang tertimpa diam-diam.
 services:
   # --- Siapkan kepemilikan volume data ------------------------------------
   # Volume bernama dibuat root-owned oleh Docker, sedangkan OpenBao berjalan
@@ -36,7 +36,9 @@ services:
     # Bila app ikut dikontainerkan (jaringan backend internal), TUTUP ini.
     ports:
       - "127.0.0.1:8200:8200"    # host-only, tidak menghadap internet
-    networks: [backend]
+    # backend: app<->openbao. dbnet: openbao->pgvector untuk DYNAMIC SECRETS
+    # (menerbitkan kredensial DB efemeral). Tanpa dbnet, dynamic secret gagal.
+    networks: [backend, dbnet]
     restart: unless-stopped
     # Hardening: batasi eskalasi & sumber daya. 'bao status' keluar !=0 saat
     # TERSEGEL -> healthcheck menandai unhealthy sampai di-unseal (sinyal jujur).

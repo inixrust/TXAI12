@@ -42,7 +42,7 @@ class _McpToolSource:
 
     `operator=False` (bawaan produksi) memakai koneksi rag_baca hak-minimal
     yang tak dapat 'lihat semua'. Hanya jalur non-produksi (CLI operator) yang
-    menyalakan operator=True. Lihat oracle/04-operator-account.sql.
+    menyalakan operator=True. Lihat infra/oracle/04-operator-account.sql.
     """
 
     def __init__(self, quiet: bool = True, operator: bool = False):

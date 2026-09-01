@@ -1,0 +1,15 @@
+# TX-AI12 — SATU PINTU untuk seluruh stack, sebagai satu project bernama txai12.
+#
+#   docker network create txai12-net     # sekali (jaringan bersama app<->DB)
+#   docker compose up -d                 # Oracle + pgvector + OpenBao + Caddy + app
+#
+# Ini hanya menggabungkan berkas compose di infra/ lewat `include`. Tiap bagian
+# tetap bisa dijalankan sendiri dengan `-f infra/<berkas>` bila perlu (lihat
+# infra/README.md). Pemisahan: KODE aplikasi di root (src/, apps/), seluruh
+# DEPLOYMENT di infra/.
+name: txai12
+
+include:
+  - infra/compose-pgvector.yaml
+  - infra/compose-oracle.yaml
+  - infra/compose-infra.yaml

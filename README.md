@@ -41,12 +41,12 @@ export PYTHONPATH=src           # PowerShell: $env:PYTHONPATH = "src"
 | `source_originals/` | Dokumen asli ber-lapisan teks. **Tidak diindeks** — hanya bahan `make_scans.py` |
 | `scanned_documents/` | 8 halaman PDF tanpa lapisan teks, cacatnya terkendali |
 | `documents/` | Korpus yang diindeks langsung: notulen dan SOP-03 yang dicabut |
-| `oracle/` | Skema, isi, dan empat lapis pembatas. `README.md` di dalamnya = kunci jawaban |
+| `infra/oracle/` | Skema, isi, dan empat lapis pembatas. `README.md` di dalamnya = kunci jawaban |
 | `testset.json` | 24 kasus retrieval — dipakai membandingkan Chroma vs pgvector |
 | `testset_hybrid.json` | 30 kasus, 12 jenis — lihat "Set uji hibrida" di bawah |
 | `make_scans.py` | Membangkitkan ulang korpus pindaian; cacatnya tetap di tiap mesin |
-| `compose-pgvector.yaml` | Postgres + pgvector (indeks L6 dan checkpointer L10) |
-| `compose-oracle.yaml` | Oracle Database Free 23ai |
+| `compose.yaml` | SATU pintu: `docker compose up -d` untuk seluruh stack (project `txai12`) |
+| `infra/` | Semua DEPLOYMENT: compose DB + stack (OpenBao/Caddy/app), Dockerfile, SQL |
 | `apps/app12.py` | Antarmuka web TX-AI12 — login, RLS, penanda mutu ekstraksi |
 | `runbook/` | Bahan serah terima L14 |
 | `worksheets/` | Lembar isian L13 dan L14 |
@@ -88,7 +88,7 @@ export OLLAMA_NUM_PARALLEL=1        # paralel menggandakan token visual
 ### Hari 2 — storage dan hak akses
 
 ```bash
-docker compose -f compose-pgvector.yaml up -d
+docker compose -f infra/compose-pgvector.yaml up -d   # atau seluruh stack: docker compose up -d
 
 STORAGE=pgvector python -m ragcore.commands.index --ulang
 
@@ -144,8 +144,8 @@ masuk, tidak pernah dari isian formulir.
 ### Hari 4 — data terstruktur dan orkestrasi
 
 ```bash
-docker compose -f compose-oracle.yaml up -d     # 5-10 menit pertama kali
-# lalu ikuti oracle/README.md untuk mengisi skema dan memasang pembatas
+docker compose -f infra/compose-oracle.yaml up -d   # 5-10 menit pertama kali
+# lalu ikuti infra/oracle/README.md untuk mengisi skema dan memasang pembatas
 
 # Sekali per mesin: simpan sambungan yang dipakai agent.
 # Tidak butuh terminal — disimpan lewat server MCP itu sendiri.
@@ -159,7 +159,7 @@ python -m ragcore.commands.evaluate_hybrid
 
 Bila SQLcl dijalankan dari lingkungan tanpa TTY (CI, agen otomatis), setel
 `SQLCL_HOME` — lab akan memanggil kelas utamanya langsung dan melewati skrip
-peluncur yang menuntut konsol. Lihat `oracle/README.md`.
+peluncur yang menuntut konsol. Lihat `infra/oracle/README.md`.
 
 L10 — LangGraph berkeadaan (tidak butuh Oracle, cukup Postgres):
 
@@ -771,8 +771,8 @@ melindungi sistem Anda.**
 **Berkas SQL Oracle belum pernah dijalankan pada Oracle sungguhan.** Disusun
 dari dokumentasi. Jalankan sekali sebelum kelas pertama dan perbaiki apa yang
 perlu — mulai dari `ALTER SESSION SET CONTAINER` di baris awal
-`oracle/02-restrictions.sql`, yang berisiko gagal bila SQLcl sudah tersambung
-langsung ke PDB seperti yang disuruh `oracle/README.md`.
+`infra/oracle/02-restrictions.sql`, yang berisiko gagal bila SQLcl sudah
+tersambung langsung ke PDB seperti yang disuruh `infra/oracle/README.md`.
 
 ---
 

@@ -253,7 +253,7 @@ def wrap_reconnect(tool, connect):
 
     KENAPA PERLU, DAN KENAPA INI BUKAN SEKADAR KETANGGUHAN.
 
-    Lapisan 3 pembatas Oracle (oracle/02-restrictions.sql) memasang profil dengan
+    Lapisan 3 pembatas Oracle (infra/oracle/02-restrictions.sql) memasang profil dengan
     CONNECT_TIME 60 - sesi rag_baca DIBUNUH setelah 60 menit. Itu memang
     disengaja: agent yang lupa menutup sambungan tidak boleh menggenggam sesi
     basis data produksi selamanya.
@@ -368,7 +368,7 @@ def guard_db_access(tool, connect=None):
       1. PUBLIC (anonim web) DITOLAK - hanya dokumen umum untuknya.
       2. Sebelum SQL model jalan, konteks penyaring-baris Oracle disetel dari
          identitas TERVERIFIKASI (bukan dari SQL model), lalu VPD di
-         oracle/03-row-scope.sql menyaring tiap baris ke UNIT pemohon. Direksi
+         infra/oracle/03-row-scope.sql menyaring tiap baris ke UNIT pemohon. Direksi
          dan operator melihat semua. SQL model divalidasi SELECT-tunggal supaya
          ia tak bisa mengganti konteks itu sendiri.
 
@@ -437,7 +437,7 @@ async def database_session(quiet: bool = True, operator: bool = False):
     `operator=False` (bawaan) memakai koneksi PRODUKSI hak-minimal (rag_baca):
     hanya set_identity, set_operator ditolak DB. `operator=True` memakai koneksi
     OPERATOR (rag_operator) yang boleh 'lihat semua' - HANYA untuk jalur non-
-    produksi (CLI, evaluasi). Lihat oracle/04-operator-account.sql. Bila koneksi
+    produksi (CLI, evaluasi). Lihat infra/oracle/04-operator-account.sql. Bila koneksi
     operator belum disiapkan, config menjatuhkannya ke koneksi rag_baca.
 
     SATU SESI ITU WAJIB, DAN INI JEBAKANNYA.

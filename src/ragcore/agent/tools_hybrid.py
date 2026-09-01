@@ -152,7 +152,7 @@ def search_rules(question: str) -> str:
 # schema_information mengembalikan daftar KOSONG.
 #
 # Itu bukan cacat, melainkan konsekuensi langsung dari empat lapis pembatas
-# di oracle/02-restrictions.sql: akun terpisah tanpa objek sendiri. Mengunci
+# di infra/oracle/02-restrictions.sql: akun terpisah tanpa objek sendiri. Mengunci
 # akses memutus penemuan skema otomatis - jadi skemanya harus diberikan.
 #
 # Terbukti perlu: tanpa ini qwen3:8b menebak nama tabel `pengajuan_cuti`,

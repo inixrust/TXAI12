@@ -91,7 +91,7 @@ print(alur.get_state(konfig).next)     # sampai mana ia berjalan
 Butuh sekitar `<isi dari lembar kapasitas>` jam untuk arsip penuh.
 
 ```bash
-docker compose -f compose-pgvector.yaml up -d
+docker compose -f infra/compose-pgvector.yaml up -d
 PENYIMPANAN=pgvector python -m rag_lab12.perintah.indeks --ulang
 python -m rag_lab12.perintah.rls --pasang
 ```
