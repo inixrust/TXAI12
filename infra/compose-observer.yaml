@@ -168,10 +168,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniosecret} # CHANGEME
-      # Alamat PUBLIK minio (diterminasi TLS oleh Caddy). Dipakai untuk validasi
-      # tanda-tangan presigned + redirect konsol. minio tetap melayani HTTP di
-      # dalam; TLS ada di Caddy (pola edge-TLS).
-      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-https://minio.localhost:8443}
+      # JANGAN set MINIO_SERVER_URL ke URL eksternal: konsol memakainya untuk
+      # MENJANGKAU API dari DALAM container -> https://minio.localhost:8443 tak
+      # ada resolusinya di dalam -> login konsol gagal 503. Tanda-tangan presigned
+      # Langfuse tetap sah karena divalidasi terhadap Host permintaan (Caddy
+      # meneruskan Host apa adanya), bukan MINIO_SERVER_URL.
       MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-https://minio-console.localhost:8443}
     # TIDAK ada `ports:` - HTTP mentah minio DITUTUP. Akses hanya lewat Caddy TLS
     # (https://minio.localhost = S3, https://minio-console.localhost = konsol) dan
