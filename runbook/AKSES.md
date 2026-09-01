@@ -27,6 +27,9 @@ OpenBao + Caddy) dan **`txai12-observer`** (Langfuse). Aturan umum:
 |---|---|---|
 | **minio console** (storage Langfuse) | `http://127.0.0.1:9091` | `minio` / `miniosecret` |
 
+> Mengelola stack: `txai12` dari `docker compose` di akar; `txai12-observer`
+> (Langfuse) dari `docker compose -f infra/compose-observer.yaml`.
+
 ---
 
 ## 2. Akses lewat CLI / klien

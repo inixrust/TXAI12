@@ -12,11 +12,16 @@ compose sebagai SATU project `txai12`:
 
 ```sh
 docker network create txai12-net     # sekali - jaringan bersama app<->DB
-docker compose up -d                 # seluruh stack (Oracle+pgvector+OpenBao+Caddy+app)
+docker compose up -d                 # project txai12: Oracle+pgvector+OpenBao+Caddy+app
+
+# Observability terpisah (project txai12-observer), di-vendor di repo:
+docker compose -f infra/compose-observer.yaml up -d
+# produksi: tambahkan --env-file infra/.env.observer (lihat .env.observer.example)
 ```
 
 Tiap bagian tetap bisa dijalankan sendiri dengan `-f infra/<berkas>` (lihat
-komentar di tiap compose). Stack Langfuse dikelola terpisah.
+komentar di tiap compose). Langfuse project terpisah SENGAJA (lifecycle sendiri),
+tapi compose-nya kini ada di repo (`compose-observer.yaml`), bukan folder temp.
 
 Ini **kerangka**, bukan tombol satu-klik. Bagian yang sudah nyata & teruji ada
 di sisi aplikasi (loader OpenBao + fallback env, lihat `settings/security.py`
@@ -43,6 +48,9 @@ deployment yang perlu langkah operasional di bawah.
 | Berkas | Guna |
 |---|---|
 | `compose-infra.yaml` | OpenBao + Caddy + **app** + jaringan tersegmentasi |
+| `compose-oracle.yaml` / `compose-pgvector.yaml` | Basis data (project `txai12`) |
+| `compose-observer.yaml` | Langfuse (project **`txai12-observer`**, di-vendor) |
+| `.env.observer.example` | Rahasia observer (salin ke `.env.observer`) |
 | `Dockerfile` | Image aplikasi (Streamlit + ragcore + Java/SQLcl) |
 | `Caddyfile` | Reverse proxy: TLS, header keamanan, catatan rate limit |
 | `openbao/config.hcl` | OpenBao storage-raft (persisten, bukan dev mode) |

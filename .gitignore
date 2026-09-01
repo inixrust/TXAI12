@@ -2,6 +2,7 @@ hasil-evaluasi.json
 
 # setelan lokal per mesin
 .env
+infra/.env.observer
 
 # RAHASIA infra - JANGAN pernah di-commit
 # (kunci unseal untuk auto-unseal lab, dan snapshot OpenBao)
