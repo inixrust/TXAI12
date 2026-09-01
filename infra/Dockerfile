@@ -21,7 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG SQLCL_URL=https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip
 RUN curl -fsSL "$SQLCL_URL" -o /tmp/sqlcl.zip \
     && unzip -q /tmp/sqlcl.zip -d /opt \
-    && rm /tmp/sqlcl.zip
+    && rm /tmp/sqlcl.zip \
+    # zip mengekstrak jar sebagai 640 root:root -> user non-root (appuser) tak
+    # bisa MEMBACA -> "ClassNotFoundException: SqlCli". Buka baca+telusur utk semua.
+    && chmod -R a+rX /opt/sqlcl
 ENV SQLCL_HOME=/opt/sqlcl
 
 WORKDIR /app
@@ -48,7 +51,12 @@ COPY .streamlit/ ./.streamlit/
 ENV PYTHONPATH=/app/src
 
 # Non-root.
-RUN useradd -m -u 10001 appuser && chown -R appuser /app
+# Buat $HOME/.dbtools milik appuser LEBIH DULU: volume sqlcl-conn yang di-mount
+# di sini akan mewarisi kepemilikan appuser (Docker menyalin dari mountpoint
+# yang ada), jadi SQLcl bisa menulis sambungan tersimpan tanpa init chown.
+RUN useradd -m -u 10001 appuser \
+    && mkdir -p /home/appuser/.dbtools \
+    && chown -R appuser /app /home/appuser/.dbtools
 USER appuser
 
 EXPOSE 8501

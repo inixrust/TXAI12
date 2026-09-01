@@ -155,6 +155,11 @@ services:
       - ../index_meta.json:/app/index_meta.json:ro
       - ../testset.json:/app/testset.json:ro
       - ../testset_hybrid.json:/app/testset_hybrid.json:ro
+      # Sambungan MCP Oracle tersimpan (agentlab) untuk tab Agent/Konsultasi.
+      # SQLcl menyimpannya di $HOME/.dbtools; volume ini membuatnya BERTAHAN
+      # recreate. Isi sekali (fresh): docker exec txai12-app-1 \
+      #   python -m ragcore.commands.mcp --simpan-sambungan
+      - sqlcl-conn:/home/appuser/.dbtools
     # TIDAK ada `ports:` - hanya Caddy yang menjangkaunya (produksi). Untuk akses
     # langsung saat uji/dev, tambah sementara: ports: ["127.0.0.1:8510:8501"].
     restart: unless-stopped
@@ -186,3 +191,4 @@ volumes:
   openbao-data:
   caddy-data:
   caddy-config:
+  sqlcl-conn:                   # sambungan MCP tersimpan (agentlab), lihat app

@@ -247,6 +247,17 @@ bao write -f auth/approle/role/txai12/secret-id       # -> OPENBAO_SECRET_ID
 # lalu: OPENBAO_ROLE_ID=... OPENBAO_SECRET_ID=... docker compose ... up -d app
 ```
 
+**Tab Agent/Konsultasi (MCP Oracle) — provisi sekali.** SQLcl butuh SAMBUNGAN
+TERSIMPAN (`agentlab`). Setelah stack naik + Oracle sehat, jalankan sekali (hasilnya
+bertahan di volume `sqlcl-conn`):
+
+```sh
+docker exec txai12-app-1 python -m ragcore.commands.mcp --simpan-sambungan
+```
+
+(Image sudah membuat jar SQLcl bisa dibaca non-root + `$HOME/.dbtools` milik
+appuser; database_session pun kini tahan saat `agentlab` belum ada.)
+
 **Dynamic secrets — sandi DB efemeral, RLS tetap.** [openbao/dynamic-db.sh](openbao/dynamic-db.sh)
 mengonfigurasi secrets engine `database` untuk pgvector. Peran `rag_app_dyn`
 menerbitkan user+sandi berumur pendek (TTL 1 jam) yang dibuat sebagai **ANGGOTA

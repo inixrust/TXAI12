@@ -477,8 +477,15 @@ async def database_session(quiet: bool = True, operator: bool = False):
                 {"connection_name": conn_name})
 
         if "connect" in mapping:
-            result = await connect()
-            text = mcp_text(result)
+            # SQLcl MCP versi baru MELEMPAR McpError (bukan mengembalikan teks)
+            # saat sambungan belum ada. Itu tak boleh mematikan sesi: bootstrap
+            # (--simpan-sambungan) justru berjalan SEBELUM sambungan tersimpan,
+            # dan sqlcl_run tetap bisa dipakai untuk `conn -save` tanpa koneksi.
+            try:
+                result = await connect()
+                text = mcp_text(result)
+            except Exception as e:      # noqa: BLE001 - jenis McpError beda antar-versi
+                text = str(e)
             if not quiet:
                 row = text.strip().splitlines()[:2]
                 print("  " + " / ".join(b.strip() for b in row if b.strip()))
