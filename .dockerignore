@@ -7,9 +7,9 @@
 .ruff_cache
 
 # Rahasia & data lokal - JANGAN masuk image.
+# (chunks.json TIDAK dikecualikan - indeks korpus itu dibutuhkan saat runtime.)
 .env
 *.snap
-chunks.json
 
 # Berat / tak diperlukan saat runtime container.
 tests

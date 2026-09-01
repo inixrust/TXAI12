@@ -181,8 +181,18 @@ def _sourced(name: str) -> str:
 # TTL cukup panjang / restart dalam TTL. Karena itu ini OPT-IN, bukan bawaan.
 
 
+# State lease dinamis - dipakai renewer latar (start_lease_renewer). base_url
+# menyimpan URL STATIS (dengan placeholder kredensial) supaya rotasi bisa
+# menyusun ulang dengan kredensial baru tanpa kehilangan host/port/db.
+_dynamic: dict = {"lease_id": None, "ttl": 0, "role": "", "base_url": ""}
+_renewer_started = False
+
+
 def _dynamic_db_creds(role: str) -> tuple[str, str] | None:
-    """(user, sandi) efemeral dari OpenBao database/creds/<role>. None bila gagal."""
+    """(user, sandi) efemeral dari OpenBao database/creds/<role>. None bila gagal.
+
+    Sekaligus MENCATAT lease_id + TTL supaya bisa diperpanjang/dirotasi.
+    """
     addr = os.getenv("OPENBAO_ADDR", "").strip()
     token = os.getenv("OPENBAO_TOKEN", "").strip() or _approle_login(addr)
     if not addr or not token:
@@ -194,11 +204,27 @@ def _dynamic_db_creds(role: str) -> tuple[str, str] | None:
             f"{addr.rstrip('/')}/v1/database/creds/{role}",
             headers={"X-Vault-Token": token})
         with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310
-            data = (json.load(r).get("data") or {})
+            body = json.load(r)
+        data = body.get("data") or {}
         user, pw = data.get("username"), data.get("password")
-        return (user, pw) if user and pw else None
+        if not (user and pw):
+            return None
+        _dynamic.update(lease_id=body.get("lease_id"),
+                        ttl=int(body.get("lease_duration") or 0), role=role)
+        return (user, pw)
     except Exception:
         return None
+
+
+def _with_creds(url: str, user: str, pw: str) -> str:
+    """Ganti userinfo di URL, biarkan host/port/db apa adanya."""
+    from urllib.parse import quote, urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    netloc = f"{quote(user, safe='')}:{quote(pw, safe='')}@{parts.hostname}"
+    if parts.port:
+        netloc += f":{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 def maybe_dynamic_db(url: str) -> str:
@@ -210,17 +236,102 @@ def maybe_dynamic_db(url: str) -> str:
     role = os.getenv("OPENBAO_DB_ROLE", "").strip()
     if not role:
         return url
+    _dynamic["base_url"] = url            # simpan bentuk statis untuk rotasi
     creds = _dynamic_db_creds(role)
     if not creds:
         return url
-    from urllib.parse import quote, urlsplit, urlunsplit
+    return _with_creds(url, *creds)
 
-    user, pw = creds
-    parts = urlsplit(url)
-    netloc = f"{quote(user, safe='')}:{quote(pw, safe='')}@{parts.hostname}"
-    if parts.port:
-        netloc += f":{parts.port}"
-    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+def _renew_lease() -> int:
+    """Perpanjang lease dinamis saat ini. Kembalikan TTL baru (detik); 0 bila
+    gagal / tak ada lease / tak bisa diperpanjang lagi (mendekati max_ttl)."""
+    addr = os.getenv("OPENBAO_ADDR", "").strip()
+    lease_id = _dynamic.get("lease_id")
+    if not addr or not lease_id:
+        return 0
+    token = os.getenv("OPENBAO_TOKEN", "").strip() or _approle_login(addr)
+    if not token:
+        return 0
+    import json
+    import urllib.request
+    try:
+        payload = json.dumps({"lease_id": lease_id,
+                              "increment": _dynamic.get("ttl") or 3600}).encode()
+        req = urllib.request.Request(
+            f"{addr.rstrip('/')}/v1/sys/leases/renew",
+            data=payload, headers={"X-Vault-Token": token})
+        with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310
+            body = json.load(r)
+        ttl = int(body.get("lease_duration") or 0)
+        if ttl:
+            _dynamic["ttl"] = ttl
+        return ttl
+    except Exception:
+        return 0
+
+
+def _rotate_dynamic() -> bool:
+    """Ambil kredensial dinamis BARU dan pasang ke config.PG_URL_APP. True bila
+    berhasil. Dipakai saat lease tak bisa diperpanjang lagi."""
+    role = _dynamic.get("role")
+    base = _dynamic.get("base_url")
+    if not role or not base:
+        return False
+    creds = _dynamic_db_creds(role)
+    if not creds:
+        return False
+    new_url = _with_creds(base, *creds)
+    try:
+        import ragcore.config as C
+        C.PG_URL_APP = new_url
+        from ragcore.settings import database
+        database.PG_URL_APP = new_url
+    except Exception:
+        return False
+    return True
+
+
+def refresh_dynamic_db(min_ttl: int = 600) -> str:
+    """Satu langkah pemeliharaan lease: perpanjang; bila tak bisa (mendekati
+    max_ttl) ATAU TTL hasil perpanjangan di bawah `min_ttl`, ROTASI ke kredensial
+    baru. Kembalikan 'renewed' / 'rotated' / 'gagal'. Fungsi murni-ish (tanpa
+    tidur) supaya bisa diuji langsung."""
+    ttl = _renew_lease()
+    if ttl >= min_ttl:
+        return "renewed"
+    return "rotated" if _rotate_dynamic() else "gagal"
+
+
+def start_lease_renewer() -> bool:
+    """Jalankan thread latar yang menjaga kredensial DB dinamis tetap segar
+    (perpanjang; rotasi bila mendekati max_ttl). Tak melakukan apa-apa bila
+    kredensial dinamis tak dipakai. Kembalikan True bila thread dimulai.
+
+    Ini yang menutup 'batas jujur' sebelumnya: proses berumur panjang tak lagi
+    putus saat lease berakhir.
+    """
+    global _renewer_started
+    if _renewer_started:
+        return False              # Streamlit menjalankan ulang skrip - jangan
+    if not os.getenv("OPENBAO_DB_ROLE", "").strip() or not _dynamic.get("lease_id"):
+        return False
+    import threading
+    import time
+
+    _renewer_started = True
+
+    def _loop():
+        while True:
+            ttl = _dynamic.get("ttl") or 3600
+            time.sleep(max(30, int(ttl * 0.6)))   # bangun sebelum kedaluwarsa
+            try:
+                refresh_dynamic_db()
+            except Exception:
+                pass
+
+    threading.Thread(target=_loop, daemon=True, name="bao-lease-renewer").start()
+    return True
 
 
 def secret(name: str, lab_default: str) -> str:

@@ -3,6 +3,11 @@ hasil-evaluasi.json
 # setelan lokal per mesin
 .env
 
+# RAHASIA infra - JANGAN pernah di-commit
+# (kunci unseal untuk auto-unseal lab, dan snapshot OpenBao)
+infra/openbao/unseal-keys.txt
+*.snap
+
 # artefak Python
 __pycache__/
 *.py[cod]

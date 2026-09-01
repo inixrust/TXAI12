@@ -178,3 +178,39 @@ def test_dynamic_db_gagal_ambil_fail_safe(monkeypatch):
     monkeypatch.setenv("OPENBAO_DB_ROLE", "rag_app_dyn")
     monkeypatch.setattr(security, "_dynamic_db_creds", lambda role: None)
     assert security.maybe_dynamic_db(_URL) == _URL
+
+
+def test_refresh_lease_diperpanjang_bila_ttl_sehat(monkeypatch):
+    """Perpanjangan mengembalikan TTL >= min_ttl -> 'renewed', tak perlu rotasi."""
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_renew_lease", lambda: 3600)
+    monkeypatch.setattr(security, "_rotate_dynamic",
+                        lambda: (_ for _ in ()).throw(AssertionError("tak boleh rotasi")))
+    assert security.refresh_dynamic_db(min_ttl=600) == "renewed"
+
+
+def test_refresh_rotasi_bila_lease_mendekati_maks(monkeypatch):
+    """Perpanjangan gagal/mepet (TTL < min_ttl) -> rotasi ke kredensial baru."""
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_renew_lease", lambda: 0)      # tak bisa diperpanjang
+    monkeypatch.setattr(security, "_rotate_dynamic", lambda: True)
+    assert security.refresh_dynamic_db(min_ttl=600) == "rotated"
+
+
+def test_refresh_gagal_bila_renew_dan_rotasi_gagal(monkeypatch):
+    from ragcore.settings import security
+
+    monkeypatch.setattr(security, "_renew_lease", lambda: 0)
+    monkeypatch.setattr(security, "_rotate_dynamic", lambda: False)
+    assert security.refresh_dynamic_db(min_ttl=600) == "gagal"
+
+
+def test_renewer_tak_jalan_tanpa_kredensial_dinamis(monkeypatch):
+    """start_lease_renewer no-op bila dynamic tak dipakai (tak ada lease)."""
+    from ragcore.settings import security
+
+    monkeypatch.delenv("OPENBAO_DB_ROLE", raising=False)
+    monkeypatch.setattr(security, "_renewer_started", False)
+    assert security.start_lease_renewer() is False

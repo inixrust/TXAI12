@@ -35,6 +35,11 @@ RUN grep -vE '^(sentence-transformers|pytesseract)' requirements.txt > /tmp/req.
 COPY src/ ./src/
 COPY apps/ ./apps/
 COPY .streamlit/ ./.streamlit/
+# Set uji hibrida/dokumen dibaca saat impor oleh evaluation.hybrid (dipakai juga
+# oleh jalur agent runtime), jadi HARUS ada di image.
+COPY testset.json testset_hybrid.json ./
+# Indeks korpus (potongan + BM25) dibutuhkan jalur retrieval saat runtime.
+COPY chunks.json ./
 ENV PYTHONPATH=/app/src
 
 # Non-root.

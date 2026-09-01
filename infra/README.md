@@ -142,10 +142,13 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
 
 ## Konsekuensi operasional (baca ini)
 
-- **Seal/unseal.** Setiap restart container OpenBao → **tersegel** → app tak
-  dapat rahasia sampai operator unseal dengan ambang kunci. Untuk single-node
-  tanpa jaga, pertimbangkan **auto-unseal** (transit/cloud KMS). Ini
-  konsekuensi desain OpenBao, bukan bug.
+- **Seal/unseal → AUTO-UNSEAL (sudah ada).** OpenBao tersegel tiap restart.
+  Sidecar `openbao-autounseal` memantau dan meng-unseal otomatis dari berkas
+  kunci `infra/openbao/unseal-keys.txt` (**di-gitignore**, salin dari
+  `unseal-keys.txt.example`). Diuji: restart OpenBao → tersegel → sidecar
+  meng-unseal < 16 detik, tanpa campur tangan. **Trade-off:** kunci ada di
+  berkas (lindungi 0600) — ini SUBSTITUSI LAB untuk auto-unseal KMS/transit yang
+  tak ada di on-prem single-node. Produksi: pakai transit/KMS.
 - **Rate limiting** di `Caddyfile` butuh plugin `caddy-ratelimit` (build
   xcaddy) atau ditegakkan di layer lain / di aplikasi. Contohnya disertakan,
   dikomentari.
@@ -223,15 +226,14 @@ mengambil kredensial DB efemeral → `current_user` = `v-approle-rag_app_-…`
 (bukan sandi statis) → RLS utuh (unit TI 43 chunk, lain 30). Tak ada sandi DB
 jangka-panjang di mana pun.
 
-> **Batas jujur — lease renewal.** App mengambil kredensial dinamis SEKALI saat
-> start dan berlaku selama TTL lease. Proses yang hidup melampaui TTL akan gagal
-> membuat sambungan BARU setelah lease berakhir. Untuk lab: TTL cukup panjang /
-> restart dalam TTL. Produksi: perpanjang lease (renewer latar) atau ambil-ulang
-> saat sambungan gagal. Karena itu fitur ini OPT-IN, bukan bawaan.
+**Lease renewal otomatis (batas jujur di atas — sudah ditutup).**
+`security.start_lease_renewer` menjalankan thread latar yang MEMPERPANJANG lease
+sebelum kedaluwarsa, dan MEROTASI ke kredensial baru saat mendekati max_ttl
+(`refresh_dynamic_db`: renew → rotate). Dipanggil sekali dari `apps/app12.py`
+(aman terhadap rerun Streamlit). Jadi proses berumur panjang tak lagi putus.
 
 ## Langkah lanjut (belum di kerangka ini)
 
-- **Perpanjangan lease otomatis** untuk kredensial DB dinamis (renewer latar),
-  agar proses berumur panjang tak putus saat lease berakhir.
-- **Auto-unseal** (transit/KMS) agar OpenBao tak perlu unseal manual tiap restart.
+- **Auto-unseal via transit/KMS** menggantikan berkas kunci lab (menghapus
+  penyimpanan kunci unseal di disk).
 - **Keycloak/OIDC (endgame B)** menggantikan login sandi app sepenuhnya.

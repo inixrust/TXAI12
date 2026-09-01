@@ -50,6 +50,36 @@ services:
       timeout: 5s
       retries: 3
 
+  # --- Auto-unseal (substitusi KMS untuk lab) -----------------------------
+  # OpenBao TERSEGEL tiap restart. Sidecar ini memantau dan meng-unseal otomatis
+  # dari berkas kunci (infra/openbao/unseal-keys.txt, DI-GITIGNORE). Ini
+  # menghapus langkah unseal manual yang berulang. Trade-off: kunci ada di
+  # berkas -> lindungi (0600). Produksi: pakai auto-unseal transit/KMS.
+  openbao-autounseal:
+    image: openbao/openbao:latest
+    depends_on: [openbao]
+    restart: unless-stopped
+    environment:
+      BAO_ADDR: http://openbao:8200
+    volumes:
+      - ./openbao/unseal-keys.txt:/keys/unseal.txt:ro
+    networks: [backend]              # harus sejaring dengan openbao
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          if ! bao status >/dev/null 2>&1; then
+            while IFS= read -r k; do
+              case "$$k" in ""|\#*) continue;; esac
+              bao operator unseal "$$k" >/dev/null 2>&1 || true
+            done < /keys/unseal.txt
+          fi
+          sleep 15
+        done
+
   # --- Reverse proxy: satu-satunya yang menghadap keluar -------------------
   caddy:
     image: caddy:2
@@ -108,6 +138,8 @@ services:
       # sebagai container. Timpa sesuai lingkungan.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     networks: [frontend, backend, dbnet]
+    # TIDAK ada `ports:` - hanya Caddy yang menjangkaunya (produksi). Untuk akses
+    # langsung saat uji/dev, tambah sementara: ports: ["127.0.0.1:8510:8501"].
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

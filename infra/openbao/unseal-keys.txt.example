@@ -1,0 +1,15 @@
+# Contoh berkas kunci unseal untuk auto-unseal lab (openbao-autounseal).
+# SALIN ke unseal-keys.txt (yang DI-GITIGNORE) dan isi dengan kunci sungguhan
+# dari `bao operator init` - satu kunci base64 per baris, sebanyak AMBANG
+# (mis. 3 dari 5). Baris kosong / diawali '#' diabaikan.
+#
+# PERINGATAN KEAMANAN: menaruh kunci unseal di berkas MENIADAKAN sebagian besar
+# guna segel - siapa pun yang membaca berkas ini bisa membuka OpenBao. Ini
+# SUBSTITUSI LAB untuk auto-unseal berbasis KMS/HSM yang tak ada di on-prem
+# single-node. Di produksi: pakai auto-unseal transit/KMS, atau tetap unseal
+# manual. Lindungi berkas ini (0600), JANGAN commit (sudah di .gitignore).
+#
+# contoh (BUKAN kunci sungguhan):
+# Zm9vYmFyMDEyMzQ1Njc4OWFiY2RlZmdoaWprbG1ub3A=
+# cXV4YmF6MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3E=
+# d2FsZG8xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHE=
