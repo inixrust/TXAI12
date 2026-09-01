@@ -32,11 +32,12 @@ services:
     volumes:
       - openbao-data:/openbao/data
       - ./openbao:/openbao/infra:ro    # config.hcl, policy, bootstrap.sh
-    # Saat BOOTSTRAP, buka port ke host agar bisa init/unseal + jalankan
-    # bootstrap.sh, DAN agar app yang berjalan di host bisa membaca rahasia.
-    # Bila app ikut dikontainerkan (jaringan backend internal), TUTUP ini.
-    ports:
-      - "127.0.0.1:8200:8200"    # host-only, tidak menghadap internet
+    # TIDAK ada `ports:` - HTTP 8200 mentah DITUTUP. OpenBao dijangkau hanya:
+    #   - internal (app, sidecar) lewat jaringan Docker: http://openbao:8200
+    #   - browser/operator lewat Caddy TLS: https://openbao.localhost
+    #   - CLI: docker exec txai12-openbao-1 bao ...
+    # Untuk bootstrap awal (init/unseal sebelum Caddy siap), buka SEMENTARA:
+    #   ports: ["127.0.0.1:8200:8200"]   lalu tutup lagi.
     # backend: app<->openbao. dbnet: openbao->pgvector untuk DYNAMIC SECRETS
     # (menerbitkan kredensial DB efemeral). Tanpa dbnet, dynamic secret gagal.
     networks: [backend, dbnet]
