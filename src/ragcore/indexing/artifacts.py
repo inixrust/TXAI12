@@ -9,10 +9,16 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Sequence
-
-from langchain_chroma import Chroma
+from typing import TYPE_CHECKING
 
 from ragcore.domain import Document
+
+if TYPE_CHECKING:                       # anotasi saja - tak menuntut chromadb saat impor
+    from langchain_chroma import Chroma
+
+# Impor Chroma SENGAJA lazy (di dalam fungsi): jalur pgvector (load_chunks untuk
+# BM25) tak butuh Chroma, jadi image produksi pgvector tak perlu memikul
+# chromadb+onnxruntime (~1,5 GB). STORAGE=chroma tetap jalan bila chromadb ada.
 
 from .. import config
 from ..errors import IndexNotBuilt
@@ -29,6 +35,8 @@ def delete_index() -> bool:
 
 def create_index(chunks: Sequence[Document]) -> Chroma:
     """Buat embedding seluruh chunks dan simpan ke basis vektor."""
+    from langchain_chroma import Chroma
+
     return Chroma.from_documents(
         documents=list(chunks),
         embedding=get_embedding(),
@@ -39,6 +47,8 @@ def create_index(chunks: Sequence[Document]) -> Chroma:
 
 def open_index() -> Chroma:
     """Buka indeks yang sudah dibangun."""
+    from langchain_chroma import Chroma
+
     if not config.INDEX.exists():
         raise IndexNotBuilt(
             # Perintah di pesan errors HARUS bisa disalin-tempel dari

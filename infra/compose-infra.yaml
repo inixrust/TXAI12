@@ -138,6 +138,17 @@ services:
       # sebagai container. Timpa sesuai lingkungan.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     networks: [frontend, backend, dbnet]
+    # DATA di-mount read-only (container STATELESS - image cuma kode). Korpus &
+    # indeks hidup di host/volume; perbarui + index-ulang tanpa rebuild image.
+    # Jalur cocok dengan settings/paths.py (ROOT=/app). `../` relatif ke berkas
+    # compose ini (infra/), jadi menunjuk akar repo.
+    volumes:
+      - ../documents:/app/documents:ro
+      - ../scanned_documents:/app/scanned_documents:ro
+      - ../chunks.json:/app/chunks.json:ro
+      - ../index_meta.json:/app/index_meta.json:ro
+      - ../testset.json:/app/testset.json:ro
+      - ../testset_hybrid.json:/app/testset_hybrid.json:ro
     # TIDAK ada `ports:` - hanya Caddy yang menjangkaunya (produksi). Untuk akses
     # langsung saat uji/dev, tambah sementara: ports: ["127.0.0.1:8510:8501"].
     restart: unless-stopped

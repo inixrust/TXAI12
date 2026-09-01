@@ -26,25 +26,25 @@ ENV SQLCL_HOME=/opt/sqlcl
 
 WORKDIR /app
 
-# Deps Python - lewati optional berat (lihat catatan di atas).
+# Deps Python - lewati yang tak dipakai container pgvector:
+#   sentence-transformers -> torch (~2 GB), reranker opsional
+#   pytesseract           -> OCR pembanding opsional
+#   langchain-chroma      -> chromadb + onnxruntime (~1,5 GB); container ini
+#                            memakai pgvector, BUKAN chroma. Impor Chroma sudah
+#                            dibuat lazy (indexing/artifacts.py) agar jalur
+#                            pgvector tak menuntutnya.
 COPY requirements.txt .
-RUN grep -vE '^(sentence-transformers|pytesseract)' requirements.txt > /tmp/req.txt \
+RUN grep -vE '^(sentence-transformers|pytesseract|langchain-chroma)' requirements.txt \
+      > /tmp/req.txt \
     && pip install --no-cache-dir -r /tmp/req.txt
 
-# Kode + config Streamlit (maxUploadSize dsb).
+# HANYA KODE di image (stateless). DATA - korpus, PDF pindaian, indeks korpus
+# (chunks.json), set uji - TIDAK dibakar ke image: ia di-mount sebagai volume
+# read-only saat runtime (lihat service `app` di compose-infra.yaml). Jadi image
+# tetap ramping, dan korpus bisa diperbarui/di-index ulang tanpa rebuild image.
 COPY src/ ./src/
 COPY apps/ ./apps/
 COPY .streamlit/ ./.streamlit/
-# Set uji hibrida/dokumen dibaca saat impor oleh evaluation.hybrid (dipakai juga
-# oleh jalur agent runtime), jadi HARUS ada di image.
-COPY testset.json testset_hybrid.json ./
-# Indeks korpus (potongan + BM25) dibutuhkan jalur retrieval saat runtime.
-COPY chunks.json ./
-# Dokumen sumber + PDF pindaian: UI menampilkan PRATINJAU halaman sumber
-# (citations.scanned_page merender halaman PDF pindaian) dan teks dokumen asli.
-# Tanpa ini, kartu sumber hanya menampilkan keterangan, bukan halaman scan.
-COPY documents/ ./documents/
-COPY scanned_documents/ ./scanned_documents/
 ENV PYTHONPATH=/app/src
 
 # Non-root.

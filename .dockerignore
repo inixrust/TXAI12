@@ -16,6 +16,15 @@ tests
 docs
 incoming_documents
 infra/openbao/backups
-# CATATAN: JANGAN kecualikan *.pdf/*.png secara luas - berkas di
-# scanned_documents/ (PDF pindaian) DIBUTUHKAN UI untuk menampilkan pratinjau
-# halaman sumber (citations.scanned_page). documents/ juga dipakai jalur sitasi.
+
+# DATA (bukan kode) - TIDAK ikut ke image; di-mount sebagai volume saat runtime
+# (lihat service `app` di compose-infra.yaml). Dikecualikan dari konteks build
+# agar build tetap ramping. Perbarui korpus tanpa rebuild image.
+documents
+scanned_documents
+source_originals
+chroma_db
+chunks.json
+testset.json
+testset_hybrid.json
+index_meta.json
