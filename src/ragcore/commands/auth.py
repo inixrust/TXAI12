@@ -21,12 +21,20 @@ import os
 from ragcore.domain import auth
 from ragcore.domain.users import REGISTRY
 
+
 # Pemilik tabel (bisa MENULIS). Default = kredensial pemilik lab; timpa lewat env
 # untuk produksi. rag_auth TIDAK dipakai di sini - ia hanya-baca.
-_ADMIN = os.getenv(
-    "ORACLE_CONNECTION_ADMIN",
-    "ncs/Rahasia_Lab_2026@localhost:1521/FREEPDB1",
-)
+#
+# Default: akun pemilik ncs pada HOST yang SAMA dengan ORACLE_CONNECTION - jadi
+# ikut benar di host (localhost:1521) MAUPUN di container (oracle-txai12:1521)
+# tanpa menyetel ulang. Timpa dengan ORACLE_CONNECTION_ADMIN bila perlu.
+def _default_admin() -> str:
+    from ragcore import config
+    host = config.ORACLE_CONNECTION.split("@", 1)[-1]   # host:port/service
+    return f"ncs/Rahasia_Lab_2026@{host}"
+
+
+_ADMIN = os.getenv("ORACLE_CONNECTION_ADMIN", "") or _default_admin()
 
 _SEED_PASSWORD = os.getenv("LAB_SEED_PASSWORD", "lab2026")
 

@@ -143,7 +143,17 @@ services:
       # host.docker.internal butuh aturan firewall; alternatif: jalankan ollama
       # sebagai container. Timpa sesuai lingkungan.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-    networks: [frontend, backend, dbnet]
+      # Observability: kirim jejak ke Langfuse (project txai12-observer). App
+      # menjangkau langfuse-web lewat jaringan lfnet (bukan Caddy). Kunci = kunci
+      # project Langfuse (default lab; timpa via env untuk produksi). Tanpa kunci,
+      # tracing mati sendiri (USE_TRACING=false) - lihat settings/observability.py.
+      # HARDCODE host internal (JANGAN ${LANGFUSE_HOST}): docker compose otomatis
+      # memuat .env repo yang berisi LANGFUSE_HOST=localhost:3000 untuk app HOST -
+      # di container 'localhost' salah, harus nama service langfuse-web.
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-txai12-lab}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-txai12-lab}
+    networks: [frontend, backend, dbnet, lfnet]
     # DATA di-mount read-only (container STATELESS - image cuma kode). Korpus &
     # indeks hidup di host/volume; perbarui + index-ulang tanpa rebuild image.
     # Jalur cocok dengan settings/paths.py (ROOT=/app). `../` relatif ke berkas

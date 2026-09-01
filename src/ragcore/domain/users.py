@@ -103,6 +103,7 @@ REGISTRY: dict[str, User] = {
     "NCS-0023": User("NCS-0023", "Budi Santoso", "Divisi TI", STAFF_ROLE),
     "NCS-0031": User("NCS-0031", "Sinta Rahmawati", "Divisi TI", MANAGER_ROLE),
     "NCS-0068": User("NCS-0068", "Fitri Handayani", "Divisi Pengadaan", STAFF_ROLE),
+    "NCS-0077": User("NCS-0077", "Gunawan Saputra", "Divisi Pengadaan", MANAGER_ROLE),
     "NCS-0007": User("NCS-0007", "Bramantyo Wijaya", "Divisi SDM", MANAGER_ROLE),
     "NCS-0001": User("NCS-0001", "Chandra Halim", "Direksi", MANAGER_ROLE),
 }
