@@ -47,3 +47,19 @@ openbao.localhost {
 	import aman
 	reverse_proxy openbao:8200
 }
+
+# --- minio (storage S3 Langfuse) via TLS -------------------------------------
+# S3 API untuk media Langfuse (URL presigned yang dibuka browser). minio tahu
+# alamat publiknya lewat MINIO_SERVER_URL (lihat compose-observer) sehingga
+# tanda-tangan presigned tetap sah di belakang proxy. Caddy meneruskan Host apa
+# adanya (bawaan), jadi validasi tanda-tangan cocok.
+minio.localhost {
+	import aman
+	reverse_proxy minio:9000
+}
+
+# Konsol admin minio (SPA + websocket; butuh MINIO_BROWSER_REDIRECT_URL).
+minio-console.localhost {
+	import aman
+	reverse_proxy minio:9001
+}

@@ -72,7 +72,7 @@ services:
       LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX:-exports/}
       LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION:-auto}
       LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT:-http://minio:9000}
-      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:9090}
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-https://minio.localhost:8443}
       LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID:-minio}
       LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY:-miniosecret} # CHANGEME
       LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE:-true}
@@ -123,7 +123,8 @@ services:
     environment:
       <<: *langfuse-worker-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-mysecret} # CHANGEME
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:9090}
+      # Endpoint media yang dilihat BROWSER (URL presigned) -> lewat Caddy TLS.
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-https://minio.localhost:8443}
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
       LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
       LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
@@ -167,11 +168,14 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniosecret} # CHANGEME
-    # 9090 (S3/media) diikat ke localhost saja (dulu 0.0.0.0 = semua antarmuka).
-    # Media Langfuse tetap jalan untuk browser di host; tak lagi menghadap jaringan.
-    ports:
-      - 127.0.0.1:9090:9000
-      - 127.0.0.1:9091:9001
+      # Alamat PUBLIK minio (diterminasi TLS oleh Caddy). Dipakai untuk validasi
+      # tanda-tangan presigned + redirect konsol. minio tetap melayani HTTP di
+      # dalam; TLS ada di Caddy (pola edge-TLS).
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-https://minio.localhost:8443}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-https://minio-console.localhost:8443}
+    # TIDAK ada `ports:` - HTTP mentah minio DITUTUP. Akses hanya lewat Caddy TLS
+    # (https://minio.localhost = S3, https://minio-console.localhost = konsol) dan
+    # internal (minio:9000 untuk worker/web).
     volumes:
       - langfuse_minio_data:/data
     healthcheck:

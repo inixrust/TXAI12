@@ -21,12 +21,10 @@ OpenBao + Caddy) dan **`txai12-observer`** (Langfuse). Aturan umum:
 | **Aplikasi TX-AI12** (Streamlit) | `https://tx-ai12.localhost:8443` | pilih NIP di dropdown + sandi **`lab2026`** (argon2id per-user di Oracle) |
 | **Langfuse** (observability) | `https://langfuse.localhost:8443` | `instruktur@lab.local` / `lab2026lab2026` |
 | **OpenBao** (secret manager) | `https://openbao.localhost:8443` → `/ui` | Method **Token**; tempel token (AppRole/root) |
+| **minio console** (storage Langfuse) | `https://minio-console.localhost:8443` | `minio` / `miniosecret` |
+| **minio S3 API** (media Langfuse) | `https://minio.localhost:8443` | dipakai otomatis oleh URL presigned Langfuse |
 
-### Web localhost (non-Caddy, opsional)
-| Layanan | URL | Login |
-|---|---|---|
-| **minio console** (storage Langfuse) | `http://127.0.0.1:9091` | `minio` / `miniosecret` |
-
+> Semua di atas lewat Caddy TLS (`:8443`). Tak ada lagi UI/API via HTTP mentah.
 > Mengelola stack: `txai12` dari `docker compose` di akar; `txai12-observer`
 > (Langfuse) dari `docker compose -f infra/compose-observer.yaml`.
 
@@ -63,8 +61,9 @@ python -m ragcore.commands.evaluate_hybrid   # evaluasi agen hibrida
 
 ### DB internal Langfuse (JANGAN dipakai langsung — milik Langfuse)
 Semua **localhost-only**: Postgres `127.0.0.1:5432`, ClickHouse `127.0.0.1:8123`
-(HTTP) / `9000` (native), Redis `127.0.0.1:6379`, minio S3 `127.0.0.1:9090`.
-Ini penyimpanan internal Langfuse; akses lewat UI Langfuse, bukan langsung.
+(HTTP) / `9000` (native), Redis `127.0.0.1:6379`. minio TIDAK lagi punya port
+HTTP host — hanya via Caddy TLS (`minio.localhost` / `minio-console.localhost`)
+dan internal (`minio:9000`). Ini penyimpanan internal Langfuse; akses lewat UI.
 
 ---
 
