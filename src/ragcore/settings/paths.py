@@ -32,6 +32,13 @@ ORIGINAL_SOURCE: Path = ROOT / "source_originals"
 SCAN_DOCUMENT: Path = ROOT / "scanned_documents"
 HYBRID_TEST_SET: Path = ROOT / "testset_hybrid.json"
 
+# Dokumen yang DIUNGGAH pengguna (bukan korpus kurasi). Blob store menaruh
+# tiap unggahan di INCOMING_DOCUMENT/<uuid>/<nama-aman>, lalu pekerja ingest
+# mengindeksnya. BEDA dari SCAN_DOCUMENT (pindaian kurasi): berkas di sini
+# datang dari pengguna dan HARUS bertahan lintas-recreate (volume, bukan
+# ephemeral) supaya pratinjau PDF-nya tetap bisa dirender belakangan.
+INCOMING_DOCUMENT: Path = ROOT / "incoming_documents"
+
 # Singgahan hasil ekstraksi VLM, berdampingan dengan PDF-nya (berkas .vlm.txt).
 # Ekstraksi ulang satu arsip bisa memakan berjam-jam; singgahan membuat
 # indexing ulang menjadi hitungan detik.

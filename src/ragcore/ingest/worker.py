@@ -82,12 +82,29 @@ def process(task: dict, quiet: bool = False) -> int:
         page = [Document(page_content=file_path.read_text(encoding="utf-8"),
                             metadata={"page": None})]
 
+    # PDF unggahan ADALAH pindaiannya sendiri: berkasnya sudah PDF ber-halaman,
+    # dan tiap chunk membawa nomor `page`. Simpan rujukan ke berkas itu di
+    # `berkas_pindaian` supaya ui.citations bisa merender pratinjau halaman -
+    # persis seperti korpus pindaian kurasi. Rujukannya RELATIF terhadap
+    # INCOMING_DOCUMENT (mis. "<uuid>/nama-aman.pdf"), bukan nama tampilan,
+    # karena di sanalah berkasnya benar-benar tersimpan. Non-PDF (mis. .md)
+    # tak punya pratinjau halaman -> tak diberi berkas_pindaian.
+    scan_ref = None
+    if file_path.suffix.lower() == ".pdf":
+        try:
+            scan_ref = str(file_path.relative_to(config.INCOMING_DOCUMENT)
+                           ).replace("\\", "/")
+        except ValueError:
+            scan_ref = None      # berkas di luar INCOMING (tak lazim) -> lewati
+
     # 2. Pemotongan sadar tabel, lalu penandaan metadata (termasuk tanggal).
     chunks: list = []
     for h in page:
         for section in chunk_table_aware(h.page_content):
             meta = dict(h.metadata)
             meta["source"] = task["nama_berkas"]
+            if scan_ref:
+                meta["berkas_pindaian"] = scan_ref
             chunks.append(Document(page_content=section, metadata=meta))
     chunks = tagger.add_context(chunks, task["jenis"],
                                     task["nama_berkas"])
@@ -186,6 +203,17 @@ def run(sekali: bool = False, quiet: bool = False) -> int:
                     traceback.print_exc()
             else:
                 queue.finish(task["id"], n)
+                # Buang cache sumber: source() di-cache PER PENGGUNA (lru_cache),
+                # jadi tanpa ini dokumen yang baru diindeks TAK MUNCUL sebagai
+                # sumber sampai cache tergusur / app restart. Pekerja latar ini
+                # berbagi proses dengan UI, jadi memanggilnya di sini benar-benar
+                # menyegarkan pencarian app. Di pekerja mandiri (proses lain)
+                # ini menyegarkan cache-nya sendiri yang kosong - tak berbahaya.
+                try:
+                    from ..retrieval.sources import forget_source
+                    forget_source()
+                except Exception:      # noqa: BLE001 - segarkan cache best-effort
+                    pass
                 if not quiet:
                     print(f"  [{task['id']}] selesai, {n} potongan, "
                           f"{time.perf_counter() - mulai:.0f} detik")

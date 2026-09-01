@@ -19,6 +19,18 @@ services:
       - openbao-data:/openbao/data
     restart: "no"
 
+  # --- Siapkan kepemilikan volume unggahan --------------------------------
+  # Sama seperti openbao-init: volume bernama dibuat root-owned oleh Docker,
+  # sedangkan app berjalan sebagai uid 10001 (appuser) dan HARUS bisa menulis
+  # berkas unggahan ke sana. Init sekali-jalan ini men-chown lalu keluar; app
+  # menunggunya selesai. Tanpa ini, unggahan gagal "Permission denied".
+  uploads-init:
+    image: alpine:3
+    command: sh -c "chown -R 10001:10001 /data"
+    volumes:
+      - uploads:/data
+    restart: "no"
+
   # --- Secret manager ------------------------------------------------------
   openbao:
     image: openbao/openbao:latest
@@ -124,6 +136,8 @@ services:
     depends_on:
       openbao:
         condition: service_started
+      uploads-init:
+        condition: service_completed_successfully
     environment:
       RAG_ENV: production
       OPENBAO_ADDR: http://openbao:8200
@@ -161,10 +175,20 @@ services:
     volumes:
       - ../documents:/app/documents:ro
       - ../scanned_documents:/app/scanned_documents:ro
-      - ../chunks.json:/app/chunks.json:ro
+      # chunks.json BISA-TULIS: pekerja ingest in-process (ensure_background_worker)
+      # menyegarkan indeks BM25 lewat artifacts.save_chunks setiap kali dokumen
+      # diunggah. Read-only membuat _refresh_bm25 gagal SETELAH sisipan pgvector
+      # -> tugas ditandai gagal & pencarian leksikal diam-diam jadi setengah.
+      - ../chunks.json:/app/chunks.json
       - ../index_meta.json:/app/index_meta.json:ro
       - ../testset.json:/app/testset.json:ro
       - ../testset_hybrid.json:/app/testset_hybrid.json:ro
+      # Dokumen UNGGAHAN pengguna: volume persisten yang bisa-tulis. Diperlukan
+      # agar (1) unggahan bertahan lintas-recreate container, dan (2) ui.citations
+      # bisa merender pratinjau PDF-nya belakangan (config.INCOMING_DOCUMENT).
+      # Tanpa ini, unggahan hidup di lapisan container ephemeral dan lenyap saat
+      # recreate. Lihat ingest/blob.py & settings/paths.py:INCOMING_DOCUMENT.
+      - uploads:/app/incoming_documents
       # Sambungan MCP Oracle tersimpan (agentlab) untuk tab Agent/Konsultasi.
       # SQLcl menyimpannya di $HOME/.dbtools; volume ini membuatnya BERTAHAN
       # recreate. Isi sekali (fresh): docker exec txai12-app-1 \
@@ -202,3 +226,4 @@ volumes:
   caddy-data:
   caddy-config:
   sqlcl-conn:                   # sambungan MCP tersimpan (agentlab), lihat app
+  uploads:                      # dokumen unggahan pengguna (bertahan lintas-recreate)

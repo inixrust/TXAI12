@@ -264,9 +264,17 @@ def scanned_page(metadata: Mapping[str, Any]) -> bytes | None:
     page = metadata.get("page")
     if not scan or page is None:
         return None
+    # `scan` bisa berupa nama berkas (korpus pindaian kurasi) ATAU subjalur
+    # "<uuid>/nama.pdf" (dokumen UNGGAHAN pengguna). Cari di dua akar. Tolak
+    # ".." lebih dulu: nilai ini ikut metadata chunk, jadi diperlakukan sebagai
+    # tak-tepercaya - tanpa penjagaan, "../../etc/passwd" bisa keluar dari akar.
+    if ".." in Path(scan).parts:
+        return None
     path = config.SCAN_DOCUMENT / scan
     if not path.exists():
-        return None
+        path = config.INCOMING_DOCUMENT / scan      # dokumen unggahan pengguna
+        if not path.exists():
+            return None
     try:
         return _render_scan(str(path), int(page), 120)
     except Exception:      # noqa: BLE001 - render gagal bukan alasan UI mati

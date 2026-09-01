@@ -28,8 +28,9 @@ from pathlib import Path
 from .. import config
 
 # Folder berkas yang diunggah lewat ui. Terpisah dari `documents/` dan
-# `scanned_documents/` yang merupakan korpus bawaan lab.
-LOGIN_ROOT: Path = config.ROOT / "incoming_documents"
+# `scanned_documents/` yang merupakan korpus bawaan lab. Satu sumber jalur:
+# config.INCOMING_DOCUMENT - dibaca juga oleh ui.citations untuk pratinjau PDF.
+LOGIN_ROOT: Path = config.INCOMING_DOCUMENT
 
 # Nama berkas yang boleh dipakai di disk. Selain ini digantikan garis bawah.
 _SAFE = re.compile(r"[^A-Za-z0-9._-]")
