@@ -10,7 +10,10 @@ services:
     environment:
       ORACLE_PWD: Rahasia_Lab_2026
     ports:
-      - "1521:1521"
+      # Ikat ke localhost saja: basis data ini hanya untuk aplikasi di mesin ini,
+      # bukan untuk jaringan. Tanpa '127.0.0.1:', Docker mem-publish ke 0.0.0.0
+      # (semua antarmuka) dan listener Oracle menghadap jaringan tak tepercaya.
+      - "127.0.0.1:1521:1521"
     volumes:
       - oradata:/opt/oracle/oradata
     healthcheck:

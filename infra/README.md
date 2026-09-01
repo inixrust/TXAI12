@@ -110,6 +110,23 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
   dikomentari.
 - **TLS.** `.localhost` memakai CA internal Caddy (uji). Untuk publik, ganti ke
   domain sungguhan + buka email admin di blok global `Caddyfile` (Let's Encrypt).
+  Diuji langsung: Caddy naik, menerbitkan sertifikat internal untuk
+  `tx-ai12.localhost`, dan **terminasi TLS berhasil** (handshake + `Server:
+  Caddy`). Header keamanan (HSTS/nosniff/frame/referrer) terpasang di config dan
+  dikirim pada respons sukses.
+- **Port 80/443 sudah dipakai?** Di Docker Desktop, ingress k8s bawaan sering
+  memegang 80/443 sehingga Caddy gagal mem-publish diam-diam. Timpa port host:
+  `CADDY_HTTP_PORT=8080 CADDY_HTTPS_PORT=8443 docker compose -f
+  infra/compose-infra.yaml up -d caddy`.
+- **Caddy → app di host (Docker Desktop).** Pakai `host.docker.internal` BAWAAN
+  Docker Desktop (IPv4) — JANGAN menimpanya dengan `extra_hosts: host-gateway`,
+  yang di sebagian versi resolve ke gateway IPv6 dan app (bind IPv4) tak
+  mendengar → 502. Bahkan setelah resolve IPv4 benar, **Windows Defender
+  Firewall memblokir koneksi container→host** secara bawaan, jadi Caddy tak bisa
+  menjangkau Streamlit di host sampai ditambah aturan inbound untuk vEthernet
+  Docker/WSL — ATAU (lebih baik, arah produksi) app dikontainerkan sehingga tak
+  ada lompatan ke host sama sekali. TLS Caddy sendiri sudah terbukti; lompatan
+  ke app inilah yang menunggu salah satu dari dua itu.
 - **App masih di host → jaringan belum `internal`.** Compose ini menjalankan
   OpenBao + Caddy; aplikasi masih via venv di host, menjangkau OpenBao lewat
   port 8200 yang di-publish dan dijangkau Caddy lewat `host.docker.internal`.
@@ -118,6 +135,30 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
   (OpenBao berhenti mem-publish 8200, app di `backend` internal), app perlu
   dikontainerkan — termasuk SQLcl/Java untuk MCP Oracle — lalu aktifkan
   `internal: true`. Itu langkah terpisah.
+
+## Backup, hardening & pemindaian (sudah dikerjakan)
+
+- **Backup OpenBao (snapshot raft).** [openbao/backup.sh](openbao/backup.sh)
+  mengambil snapshot state penuh (terenkripsi). Jalankan berkala + salin keluar:
+  ```sh
+  docker compose -f infra/compose-infra.yaml exec \
+    -e BAO_TOKEN=<token-snapshot> openbao sh /openbao/infra/backup.sh
+  docker cp txai12-infra-openbao-1:/openbao/data/backups/<file>.snap ./
+  ```
+  Pulihkan di node kosong: `bao operator raft snapshot restore <file>.snap`.
+  Snapshot butuh unseal key yang SAMA untuk dibuka - simpan snapshot & key
+  TERPISAH. Diuji: snapshot valid (gzip) ~21 KB.
+- **Hardening container.** OpenBao & Caddy kini: `no-new-privileges`, batas
+  memori/CPU (`mem_limit`/`cpus`), dan healthcheck OpenBao (`bao status` →
+  unhealthy saat tersegel, sinyal jujur). `restart: unless-stopped`.
+- **Pemindaian image (Trivy).** [scan.sh](scan.sh) memindai tanpa instalasi:
+  ```sh
+  sh infra/scan.sh
+  ```
+  Temuan saat ditulis (keduanya di runtime Go bawaan image, BUKAN config kita):
+  `CVE-2026-56854` (`golang.org/x/crypto`, CRITICAL) di caddy:2 & openbao —
+  perbaikannya di hulu (x/crypto ≥ 0.55.0). Pantau rilis image; pin digest yang
+  sudah ditambal saat tersedia. Selain itu beberapa HIGH tingkat OS/alpine.
 
 ## Langkah lanjut (belum di kerangka ini)
 

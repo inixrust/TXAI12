@@ -38,21 +38,43 @@ services:
       - "127.0.0.1:8200:8200"    # host-only, tidak menghadap internet
     networks: [backend]
     restart: unless-stopped
+    # Hardening: batasi eskalasi & sumber daya. 'bao status' keluar !=0 saat
+    # TERSEGEL -> healthcheck menandai unhealthy sampai di-unseal (sinyal jujur).
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # --- Reverse proxy: satu-satunya yang menghadap keluar -------------------
   caddy:
     image: caddy:2
+    # Port HOST bisa ditimpa bila 80/443 sudah dipakai proses lain (mis. di
+    # Docker Desktop, ingress k8s bawaan sudah memegang 80/443). Produksi pakai
+    # default 80/443; lab bisa: CADDY_HTTP_PORT=8080 CADDY_HTTPS_PORT=8443 ...
     ports:
-      - "80:80"
-      - "443:443"
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    extra_hosts:
-      - "host.docker.internal:host-gateway"   # agar Caddy menjangkau app di host
+    # CATATAN: Docker Desktop menyediakan 'host.docker.internal' bawaan (IPv4)
+    # untuk menjangkau app di host. JANGAN menimpanya dengan
+    # `extra_hosts: host.docker.internal:host-gateway` di Docker Desktop -
+    # di sebagian versi itu resolve ke gateway IPv6 yang tak didengarkan app
+    # (Streamlit bind IPv4), menghasilkan 502. Di Docker Engine Linux murni,
+    # tambahkan extra_hosts host-gateway karena tak ada nama bawaan itu.
     networks: [frontend]
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
 
   # CATATAN: aplikasi (Streamlit/API) SAAT INI berjalan di HOST via venv - ia
   # membaca OPENBAO_ADDR=http://127.0.0.1:8200 + OPENBAO_TOKEN dari bootstrap.

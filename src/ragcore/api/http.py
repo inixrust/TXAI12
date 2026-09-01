@@ -57,7 +57,8 @@ def _resolve_identity(request: Request) -> Any:
     Basic auth memakai ulang login() yang ada; di produksi diganti token/OIDC
     dengan bentuk sama: kredensial -> User -> diteruskan ke service.
     """
-    from ragcore.domain.users import PUBLIC, login
+    from ragcore.domain.login_guard import guarded_login
+    from ragcore.domain.users import PUBLIC
 
     header = request.headers.get("authorization", "")
     if not header:
@@ -70,7 +71,11 @@ def _resolve_identity(request: Request) -> Any:
     except (binascii.Error, UnicodeDecodeError) as e:
         raise _AuthError("kredensial Basic tidak bisa didekode") from e
     nip, _, password = decoded.partition(":")
-    person = login(nip, password)
+    person, terkunci = guarded_login(nip, password)
+    if terkunci:
+        # Brute-force lock: tolak lebih dulu, tanpa membocorkan apakah sandinya
+        # benar. Sama seperti UI - lockout per-NIP, di memori proses.
+        raise _AuthError("terlalu banyak percobaan login, coba lagi nanti")
     if person is None:
         raise _AuthError("NIP atau sandi salah")
     return person

@@ -12,7 +12,9 @@ services:
       POSTGRES_PASSWORD: rahasia_lab
       POSTGRES_DB: korpus
     ports:
-      - "6024:5432"          # 6024 agar tidak bentrok dengan Postgres lain
+      # Ikat ke localhost saja (lihat catatan sama di compose-oracle.yaml).
+      # 6024 agar tidak bentrok dengan Postgres lain di mesin yang sama.
+      - "127.0.0.1:6024:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

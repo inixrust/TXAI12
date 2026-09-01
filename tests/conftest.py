@@ -21,3 +21,14 @@ def _auth_palsu():
         yield
     finally:
         users.set_verifier(None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_guard():
+    """Lockout login berstate di memori proses - bersihkan antar-tes agar
+    kegagalan di satu tes tak menular ke tes lain."""
+    from ragcore.domain.login_guard import GUARD
+
+    GUARD.reset()
+    yield
+    GUARD.reset()

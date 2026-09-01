@@ -117,8 +117,16 @@ def _login_screen() -> None:
         password = st.text_input("Kata sandi", type="password",
                               help="Kata sandi lab: lab2026")
         if st.form_submit_button("Masuk"):
-            person = P.login(option[idx].nip, password)
-            if person is None:
+            from ragcore.domain.login_guard import guarded_login
+
+            person, terkunci = guarded_login(option[idx].nip, password)
+            if terkunci:
+                # Terlalu banyak percobaan: tolak tanpa memeriksa sandi lagi.
+                audit.record("login-terkunci", subject=option[idx].nip,
+                             outcome="ditolak")
+                st.error(f"Terlalu banyak percobaan gagal. Coba lagi dalam "
+                         f"{terkunci // 60 + 1} menit.")
+            elif person is None:
                 # Audit: NIP yang DICOBA dicatat (deteksi percobaan paksa),
                 # sandinya TIDAK - tidak pernah menyentuh audit.record.
                 audit.record("login-gagal", subject=option[idx].nip,
