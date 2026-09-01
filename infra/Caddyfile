@@ -1,40 +1,20 @@
-# Reverse proxy TX-AI12: TLS + kompresi + (opsional) rate limit, sebagai SATU
-# pintu masuk di depan aplikasi. Hanya port Caddy (80/443) yang terekspos;
-# Streamlit/API tidak pernah menghadap internet langsung.
+# Reverse proxy TX-AI12: SATU gerbang TLS untuk SEMUA UI web. Caddy menerminasi
+# HTTPS (sertifikat internal untuk *.localhost) lalu meneruskan ke layanan HTTP
+# di jaringan Docker. Tak ada UI yang lagi diakses via HTTP polos dari browser.
 #
-# - Domain publik: ganti 'tx-ai12.localhost' dengan domain sungguhan, dan
-#   Caddy mengurus sertifikat Let's Encrypt otomatis (buka email admin di blok
-#   global). Untuk lab, '.localhost' membuat Caddy menerbitkan sertifikat
-#   INTERNAL (CA self-signed) - cukup untuk menguji jalur HTTPS.
-# - Target proxy: 'host.docker.internal:8501' menunjuk aplikasi yang berjalan
-#   di HOST (mode saat ini: DB di container, app via venv). Bila app ikut
-#   dikontainerkan, ganti menjadi 'app:8501'.
+# - Domain publik: ganti '*.localhost' dengan domain sungguhan + buka email admin
+#   di blok global -> Caddy urus sertifikat Let's Encrypt otomatis.
+# - '.localhost' -> Caddy menerbitkan sertifikat dari CA INTERNAL-nya. Browser
+#   akan MEMPERINGATKAN sampai CA itu dipercaya (lihat infra/README: "TLS lab").
+# - Oracle & pgvector protokol TCP (bukan HTTP) - tak lewat sini.
 
 {
 	# email admin@contoh.id      # aktifkan untuk ACME/Let's Encrypt di domain publik
-	# auto_https disable_redirects   # aktifkan bila terminasi TLS ada di layer lain
 }
 
-tx-ai12.localhost {
+# Snippet header keamanan + kompresi, dipakai ulang tiap situs.
+(aman) {
 	encode gzip zstd
-
-	# --- Rate limit (opsional) ---------------------------------------------
-	# Modul rate_limit BUKAN bawaan Caddy - butuh build dengan plugin
-	# github.com/mholt/caddy-ratelimit (xcaddy) ATAU pakai image caddy custom.
-	# Bila tersedia, batasi per-IP; ini meredam brute-force login & abuse:
-	#
-	# rate_limit {
-	#     zone per_ip {
-	#         key    {remote_host}
-	#         events 60
-	#         window 1m
-	#     }
-	# }
-	#
-	# Alternatif tanpa plugin: taruh rate limit di WAF/ingress di depan Caddy,
-	# atau di aplikasi (mis. batasi percobaan login per sesi/IP).
-
-	# Header keamanan dasar.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
@@ -42,9 +22,27 @@ tx-ai12.localhost {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
+}
 
-	# Streamlit memakai WebSocket - Caddy meneruskannya otomatis.
-	# Default menunjuk service 'app' (container). Bila app masih di HOST, timpa:
-	#   APP_UPSTREAM=host.docker.internal:8501 docker compose ... up -d caddy
+# --- Aplikasi TX-AI12 (Streamlit) --------------------------------------------
+tx-ai12.localhost {
+	import aman
+	# Streamlit memakai WebSocket - Caddy meneruskannya otomatis. Default ke
+	# service 'app'; bila app di HOST, timpa: APP_UPSTREAM=host.docker.internal:8501
 	reverse_proxy {$APP_UPSTREAM:app:8501}
+}
+
+# --- Langfuse (observability) ------------------------------------------------
+# Caddy harus se-jaringan dengan stack Langfuse (langfuse_default) - lihat compose.
+# Catatan: login Langfuse mungkin perlu NEXTAUTH_URL=https://langfuse.localhost
+# di stack Langfuse-nya; halaman tetap terbuka via HTTPS tanpa itu.
+langfuse.localhost {
+	import aman
+	reverse_proxy langfuse-web:3000
+}
+
+# --- OpenBao (secret manager, UI + API) --------------------------------------
+openbao.localhost {
+	import aman
+	reverse_proxy openbao:8200
 }

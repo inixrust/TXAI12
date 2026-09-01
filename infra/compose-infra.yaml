@@ -2,10 +2,11 @@
 # oleh compose.yaml di akar (satu project `txai12`, bersama Oracle + pgvector).
 # Baca infra/README.md untuk bootstrap (init & unseal OpenBao, sertifikat).
 #
-# Berdiri sendiri (project dari nama folder, tanpa DB):
-#   docker compose -f infra/compose-infra.yaml up -d
-# Nama project TIDAK di-set di sini supaya saat di-include, nama dari akar
-# (txai12) yang berlaku - bukan nama yang tertimpa diam-diam.
+# Berdiri sendiri (tanpa DB): docker compose -f infra/compose-infra.yaml up -d
+# name: txai12 seragam di semua compose -> satu project, apa pun pintu masuknya.
+# (Saat di-include oleh compose.yaml akar, name di sini diabaikan - sama saja.)
+name: txai12
+
 services:
   # --- Siapkan kepemilikan volume data ------------------------------------
   # Volume bernama dibuat root-owned oleh Docker, sedangkan OpenBao berjalan
@@ -102,7 +103,9 @@ services:
     # di sebagian versi itu resolve ke gateway IPv6 yang tak didengarkan app
     # (Streamlit bind IPv4), menghasilkan 502. Di Docker Engine Linux murni,
     # tambahkan extra_hosts host-gateway karena tak ada nama bawaan itu.
-    networks: [frontend]
+    # Caddy menerminasi TLS untuk SEMUA UI, jadi harus menjangkau tiap backend:
+    #   frontend -> app | backend -> openbao | lfnet -> langfuse-web
+    networks: [frontend, backend, lfnet]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -174,6 +177,9 @@ networks:
   dbnet:                        # app <-> Oracle & pgvector (jaringan bersama)
     external: true
     name: txai12-net
+  lfnet:                        # caddy -> Langfuse (stack terpisah) untuk TLS
+    external: true
+    name: langfuse_default
 
 volumes:
   openbao-data:

@@ -3,6 +3,8 @@
 # Biasanya dinyalakan lewat `docker compose up -d` di akar (compose.yaml
 # meng-include berkas ini). Berdiri sendiri:
 #   docker compose -f infra/compose-oracle.yaml up -d
+name: txai12                     # satu project seragam (diabaikan saat di-include)
+
 services:
   oracle:
     image: container-registry.oracle.com/database/free:latest

@@ -164,16 +164,27 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
 - **Rate limiting** di `Caddyfile` butuh plugin `caddy-ratelimit` (build
   xcaddy) atau ditegakkan di layer lain / di aplikasi. Contohnya disertakan,
   dikomentari.
-- **TLS.** `.localhost` memakai CA internal Caddy (uji). Untuk publik, ganti ke
-  domain sungguhan + buka email admin di blok global `Caddyfile` (Let's Encrypt).
-  Diuji langsung: Caddy naik, menerbitkan sertifikat internal untuk
-  `tx-ai12.localhost`, dan **terminasi TLS berhasil** (handshake + `Server:
-  Caddy`). Header keamanan (HSTS/nosniff/frame/referrer) terpasang di config dan
-  dikirim pada respons sukses.
-- **Port 80/443 sudah dipakai?** Di Docker Desktop, ingress k8s bawaan sering
-  memegang 80/443 sehingga Caddy gagal mem-publish diam-diam. Timpa port host:
-  `CADDY_HTTP_PORT=8080 CADDY_HTTPS_PORT=8443 docker compose -f
-  infra/compose-infra.yaml up -d caddy`.
+- **Semua UI web via HTTPS (satu gerbang Caddy).** Caddy menerminasi TLS untuk
+  ketiganya; tak ada UI yang lagi diakses HTTP polos dari browser:
+  - `https://tx-ai12.localhost` → aplikasi (Streamlit)
+  - `https://langfuse.localhost` → Langfuse (Caddy ikut jaringan `langfuse_default`)
+  - `https://openbao.localhost` → OpenBao UI + API (jaringan `backend`)
+
+  Diuji di browser: OpenBao (Sign in 2.6.1) & Langfuse (Sign in, host HTTPS
+  dipertahankan pada redirect) & app — semua terbuka via HTTPS. Header keamanan
+  (HSTS/nosniff/frame/referrer) terpasang. Oracle & pgvector protokol TCP, tak
+  lewat Caddy.
+- **⚠️ Persetujuan manual di browser (CA internal).** `.localhost` memakai CA
+  INTERNAL Caddy yang belum dipercaya OS → browser menampilkan **"Your
+  connection is not private"**. Untuk membuka: klik **Advanced → Proceed to
+  &lt;host&gt; (unsafe)**. Menghilangkan peringatan (opsional): percayai root CA
+  Caddy sekali —
+  `docker cp txai12-infra-caddy-1:/data/caddy/pki/authorities/local/root.crt caddy-root.crt`
+  lalu impor ke Trusted Root (Windows: `certutil -addstore -user Root
+  caddy-root.crt`). Untuk publik: pakai domain sungguhan + Let's Encrypt (buka
+  email admin di blok global `Caddyfile`) → tak ada peringatan sama sekali.
+- **Port 80/443 di Docker Desktop** sering dipegang ingress k8s bawaan; timpa
+  port host: `CADDY_HTTP_PORT=8080 CADDY_HTTPS_PORT=8443 ...` (HTTPS di :8443).
 - **Caddy → app (SUDAH DIKONTAINERKAN).** Dulu Caddy menjangkau app di host
   lewat `host.docker.internal`, yang terganjal Windows Firewall (container→host).
   Kini app adalah container: Caddy → `app:8501` container→container, terbukti
