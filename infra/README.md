@@ -196,11 +196,42 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
   perbaikannya di hulu (x/crypto ≥ 0.55.0). Pantau rilis image; pin digest yang
   sudah ditambal saat tersedia. Selain itu beberapa HIGH tingkat OS/alpine.
 
+## AppRole & kredensial DB dinamis (sudah dikerjakan)
+
+**AppRole — identitas app tanpa token statis.** App tak lagi memakai
+`OPENBAO_TOKEN` yang bisa kedaluwarsa. Ia LOGIN SEGAR tiap start dengan
+`OPENBAO_ROLE_ID` + `OPENBAO_SECRET_ID` (berumur panjang) dan mendapat token
+pendek untuk sesi itu (`settings/security.py:_approle_login`). Inilah yang
+menyelesaikan masalah "token 1 jam mati → restart gagal".
+
+```sh
+bao auth enable approle
+bao write auth/approle/role/txai12 token_policies=txai12-read token_ttl=1h token_max_ttl=4h
+bao read  auth/approle/role/txai12/role-id            # -> OPENBAO_ROLE_ID
+bao write -f auth/approle/role/txai12/secret-id       # -> OPENBAO_SECRET_ID
+# lalu: OPENBAO_ROLE_ID=... OPENBAO_SECRET_ID=... docker compose ... up -d app
+```
+
+**Dynamic secrets — sandi DB efemeral, RLS tetap.** [openbao/dynamic-db.sh](openbao/dynamic-db.sh)
+mengonfigurasi secrets engine `database` untuk pgvector. Peran `rag_app_dyn`
+menerbitkan user+sandi berumur pendek (TTL 1 jam) yang dibuat sebagai **ANGGOTA
+`rag_app`** — sehingga **RLS tetap berlaku** pada kredensial dinamis. Aktifkan di
+app dengan `OPENBAO_DB_ROLE=rag_app_dyn` (opt-in; `security.maybe_dynamic_db`).
+
+Diuji end-to-end di container: app login AppRole (tanpa token statis) →
+mengambil kredensial DB efemeral → `current_user` = `v-approle-rag_app_-…`
+(bukan sandi statis) → RLS utuh (unit TI 43 chunk, lain 30). Tak ada sandi DB
+jangka-panjang di mana pun.
+
+> **Batas jujur — lease renewal.** App mengambil kredensial dinamis SEKALI saat
+> start dan berlaku selama TTL lease. Proses yang hidup melampaui TTL akan gagal
+> membuat sambungan BARU setelah lease berakhir. Untuk lab: TTL cukup panjang /
+> restart dalam TTL. Produksi: perpanjang lease (renewer latar) atau ambil-ulang
+> saat sambungan gagal. Karena itu fitur ini OPT-IN, bukan bawaan.
+
 ## Langkah lanjut (belum di kerangka ini)
 
-- **Dynamic secrets** OpenBao untuk `rag_baca`/`rag_app`: OpenBao membuat
-  kredensial DB berumur pendek on-demand alih-alih rahasia statis. Kandidat
-  paling kuat karena menghapus sandi DB jangka-panjang sepenuhnya.
-- **AppRole** ketimbang token statis untuk identitas app (role_id + secret_id,
-  rotasi otomatis).
-- Dockerfile aplikasi + orkestrasi, agar seluruh jalur berjalan tersegmentasi.
+- **Perpanjangan lease otomatis** untuk kredensial DB dinamis (renewer latar),
+  agar proses berumur panjang tak putus saat lease berakhir.
+- **Auto-unseal** (transit/KMS) agar OpenBao tak perlu unseal manual tiap restart.
+- **Keycloak/OIDC (endgame B)** menggantikan login sandi app sepenuhnya.

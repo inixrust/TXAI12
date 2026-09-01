@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from ragcore.settings.security import secret
+from ragcore.settings.security import maybe_dynamic_db, secret
 
 # --------------------------------------------------- storage vektor
 # "pgvector" (bawaan) atau "chroma".
@@ -47,10 +47,14 @@ PG_TABLE: str = "potongan_ncs"
 # itu, kebijakan hak akses terpasang rapi dan tidak menahan apa pun.
 #
 # Peran `rag_app` dibuat oleh commands.rls --pasang.
-PG_URL_APP: str = secret(
+#
+# Bila OPENBAO_DB_ROLE diset, user/sandi statis di sini DIGANTI kredensial
+# DINAMIS efemeral dari OpenBao (peran anggota rag_app, RLS tetap). Lihat
+# security.maybe_dynamic_db dan catatan lease-renewal di sana.
+PG_URL_APP: str = maybe_dynamic_db(secret(
     "PG_URL_APP",
     "postgresql+psycopg://rag_app:rahasia_app@localhost:6024/korpus",
-)
+))
 
 # Nama parameter sesi yang dibaca kebijakan RLS. Didefinisikan sekali di sini
 # karena dipakai di tiga tempat: SQL kebijakan, penyusunan sambungan, dan

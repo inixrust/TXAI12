@@ -141,3 +141,40 @@ def test_openbao_kosong_jatuh_ke_default_lab(monkeypatch):
     monkeypatch.setattr(security, "IS_PRODUCTION", False)
     monkeypatch.delenv("SESSION_SECRET", raising=False)
     assert security.signing_secret("SESSION_SECRET", "default-lab") == "default-lab"
+
+
+# ----------------------------------------------- kredensial DB dinamis (opt-in)
+
+_URL = "postgresql+psycopg://rag_app:statik@pg-txai12:5432/korpus"
+
+
+def test_dynamic_db_nonaktif_url_tak_berubah(monkeypatch):
+    """Tanpa OPENBAO_DB_ROLE, URL statis dikembalikan apa adanya."""
+    from ragcore.settings import security
+
+    monkeypatch.delenv("OPENBAO_DB_ROLE", raising=False)
+    assert security.maybe_dynamic_db(_URL) == _URL
+
+
+def test_dynamic_db_mengganti_userinfo(monkeypatch):
+    """Dengan role diset & kredensial tersedia: HANYA user/sandi yang diganti,
+    host/port/nama-db tetap."""
+    from ragcore.settings import security
+
+    monkeypatch.setenv("OPENBAO_DB_ROLE", "rag_app_dyn")
+    monkeypatch.setattr(security, "_dynamic_db_creds",
+                        lambda role: ("v-efemeral-123", "sandi-efemeral"))
+    out = security.maybe_dynamic_db(_URL)
+    assert "v-efemeral-123:sandi-efemeral@pg-txai12:5432/korpus" in out
+    assert out.startswith("postgresql+psycopg://")
+    assert "statik" not in out
+
+
+def test_dynamic_db_gagal_ambil_fail_safe(monkeypatch):
+    """Bila pengambilan kredensial gagal (None), URL statis dipertahankan -
+    tak mematikan app."""
+    from ragcore.settings import security
+
+    monkeypatch.setenv("OPENBAO_DB_ROLE", "rag_app_dyn")
+    monkeypatch.setattr(security, "_dynamic_db_creds", lambda role: None)
+    assert security.maybe_dynamic_db(_URL) == _URL

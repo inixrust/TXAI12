@@ -91,10 +91,16 @@ services:
     environment:
       RAG_ENV: production
       OPENBAO_ADDR: http://openbao:8200
-      OPENBAO_TOKEN: ${OPENBAO_TOKEN:?set OPENBAO_TOKEN ke token app rag_auth-scoped}
+      # Identitas app ke OpenBao lewat AppRole (bukan token statis yang bisa
+      # kedaluwarsa): app LOGIN SEGAR tiap start pakai role_id + secret_id.
+      OPENBAO_ROLE_ID: ${OPENBAO_ROLE_ID:?set OPENBAO_ROLE_ID (bao read auth/approle/role/txai12/role-id)}
+      OPENBAO_SECRET_ID: ${OPENBAO_SECRET_ID:?set OPENBAO_SECRET_ID (bao write -f auth/approle/role/txai12/secret-id)}
       # Rahasia VARIAN CONTAINER: alamat DB pakai nama container (pg-txai12,
       # oracle-txai12), bukan localhost. Lihat secret/txai12-app di OpenBao.
       OPENBAO_KV_PATH: secret/data/txai12-app
+      # OPT-IN kredensial DB DINAMIS: bila diisi (mis. rag_app_dyn), sandi statis
+      # pg diganti user efemeral dari OpenBao. Kosong = pakai sandi statis KV.
+      OPENBAO_DB_ROLE: ${OPENBAO_DB_ROLE:-}
       STORAGE: pgvector
       MODEL_CHAT: ${MODEL_CHAT:-qwen3:4b}
       # Ollama berjalan di HOST. Di Docker Desktop, container->host lewat

@@ -17,3 +17,9 @@ path "secret/data/txai12-app" {
 path "secret/metadata/txai12-app" {
   capabilities = ["read"]
 }
+
+# Kredensial DB DINAMIS (efemeral) - app meminta user/sandi berumur pendek
+# alih-alih memakai sandi statis. Peran dinamis anggota rag_app, jadi RLS tetap.
+path "database/creds/rag_app_dyn" {
+  capabilities = ["read"]
+}

@@ -82,14 +82,55 @@ def _guard_secret(name: str, value: str) -> str:
 # BUKAN kredensial DB itu sendiri. Rahasia sebenarnya (URL DB, kunci HMAC) hidup
 # di dalam OpenBao dan diambil saat impor, sekali, lalu di-cache.
 #
-#   OPENBAO_ADDR     mis. https://openbao:8200
-#   OPENBAO_TOKEN    token app (idealnya AppRole berumur pendek)
-#   OPENBAO_KV_PATH  jalur KV v2, default 'secret/data/txai12'
+#   OPENBAO_ADDR       mis. https://openbao:8200
+#   OPENBAO_KV_PATH    jalur KV v2, default 'secret/data/txai12'
 #
-# Urutan: env -> OpenBao -> (produksi: gagal / lab: default). Env tetap bisa
-# menimpa (untuk uji/darurat). OpenBao MATI tidak mematikan app - jatuh ke
-# jalur berikutnya; di produksi rahasia yang tetap kosong tetap digagalkan.
+# IDENTITAS APP KE OpenBao - dua cara, AppRole didahulukan:
+#   OPENBAO_ROLE_ID + OPENBAO_SECRET_ID  -> login AppRole, dapat token pendek
+#                    (OPENBAO_SECRET_ID_FILE juga didukung: baca secret_id dari
+#                    berkas yang di-mount, lebih baik daripada di env).
+#   OPENBAO_TOKEN    -> token statis (uji/darurat). Menang bila diisi.
+#
+# Kenapa AppRole > token statis: token statis yang tak diperbarui KEDALUWARSA -
+# restart container setelah itu gagal mengambil rahasia. Dengan AppRole, app
+# LOGIN SEGAR tiap start memakai role_id + secret_id (berumur panjang), lalu
+# dapat token pendek untuk sesi itu. Inilah identitas app yang dianjurkan.
+#
+# Urutan sumber tetap: env -> OpenBao -> (produksi: gagal / lab: default). Env
+# menimpa. OpenBao MATI tidak mematikan app - jatuh ke jalur berikutnya.
 _bao_cache: dict | None = None
+
+
+def _approle_login(addr: str) -> str:
+    """Token dari login AppRole (role_id + secret_id). '' bila tak dikonfigurasi.
+
+    secret_id boleh dari env ATAU berkas (OPENBAO_SECRET_ID_FILE) - berkas yang
+    di-mount lebih aman daripada rahasia di environment.
+    """
+    role_id = os.getenv("OPENBAO_ROLE_ID", "").strip()
+    secret_id = os.getenv("OPENBAO_SECRET_ID", "").strip()
+    if not secret_id:
+        berkas = os.getenv("OPENBAO_SECRET_ID_FILE", "").strip()
+        if berkas:
+            try:
+                with open(berkas, encoding="utf-8") as f:
+                    secret_id = f.read().strip()
+            except OSError:
+                return ""
+    if not addr or not role_id or not secret_id:
+        return ""
+    import json
+    import urllib.request
+    try:
+        data = json.dumps({"role_id": role_id, "secret_id": secret_id}).encode()
+        req = urllib.request.Request(
+            f"{addr.rstrip('/')}/v1/auth/approle/login",
+            data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310
+            body = json.load(r)
+        return (body.get("auth") or {}).get("client_token", "") or ""
+    except Exception:
+        return ""
 
 
 def _openbao_secrets() -> dict:
@@ -98,8 +139,9 @@ def _openbao_secrets() -> dict:
     if _bao_cache is not None:
         return _bao_cache
     addr = os.getenv("OPENBAO_ADDR", "").strip()
-    token = os.getenv("OPENBAO_TOKEN", "").strip()
     path = os.getenv("OPENBAO_KV_PATH", "secret/data/txai12").strip()
+    # Token statis menang; bila kosong, coba login AppRole.
+    token = os.getenv("OPENBAO_TOKEN", "").strip() or _approle_login(addr)
     if not addr or not token:
         _bao_cache = {}
         return _bao_cache
@@ -123,6 +165,62 @@ def _sourced(name: str) -> str:
     """Nilai dari env (menang) atau OpenBao. '' bila tak ada di keduanya."""
     return (os.getenv(name, "").strip()
             or str(_openbao_secrets().get(name) or "").strip())
+
+
+# ------------------------------------------------- kredensial DB DINAMIS
+#
+# Alih-alih sandi DB STATIS di KV, OpenBao bisa MENERBITKAN user+sandi efemeral
+# per-lease (secrets engine 'database'). Peran dinamis dibuat sebagai ANGGOTA
+# rag_app, jadi RLS tetap berlaku (terbukti: kredensial dinamis pun hanya melihat
+# baris unitnya). Diaktifkan dengan OPENBAO_DB_ROLE=<nama-role>.
+#
+# BATAS JUJUR (lease renewal): kredensial diambil SEKALI saat impor. Ia berlaku
+# selama TTL lease (mis. 1 jam). Proses yang hidup lebih lama dari TTL akan
+# gagal membuat sambungan BARU setelah lease berakhir - produksi butuh perpanjang
+# lease (renewer latar) atau ambil-ulang saat sambungan gagal. Untuk lab, setel
+# TTL cukup panjang / restart dalam TTL. Karena itu ini OPT-IN, bukan bawaan.
+
+
+def _dynamic_db_creds(role: str) -> tuple[str, str] | None:
+    """(user, sandi) efemeral dari OpenBao database/creds/<role>. None bila gagal."""
+    addr = os.getenv("OPENBAO_ADDR", "").strip()
+    token = os.getenv("OPENBAO_TOKEN", "").strip() or _approle_login(addr)
+    if not addr or not token:
+        return None
+    import json
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            f"{addr.rstrip('/')}/v1/database/creds/{role}",
+            headers={"X-Vault-Token": token})
+        with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310
+            data = (json.load(r).get("data") or {})
+        user, pw = data.get("username"), data.get("password")
+        return (user, pw) if user and pw else None
+    except Exception:
+        return None
+
+
+def maybe_dynamic_db(url: str) -> str:
+    """Ganti user/sandi di URL dengan kredensial DINAMIS bila OPENBAO_DB_ROLE diset.
+
+    Fail-safe: bila pengambilan gagal, kembalikan URL apa adanya (kredensial
+    statisnya). Hostname/port/nama-basis-data tidak diubah.
+    """
+    role = os.getenv("OPENBAO_DB_ROLE", "").strip()
+    if not role:
+        return url
+    creds = _dynamic_db_creds(role)
+    if not creds:
+        return url
+    from urllib.parse import quote, urlsplit, urlunsplit
+
+    user, pw = creds
+    parts = urlsplit(url)
+    netloc = f"{quote(user, safe='')}:{quote(pw, safe='')}@{parts.hostname}"
+    if parts.port:
+        netloc += f":{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 def secret(name: str, lab_default: str) -> str:
