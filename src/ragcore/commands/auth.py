@@ -1,6 +1,6 @@
 """Kelola hash sandi per-user di ncs.pengguna_auth (argon2id).
 
-    python -m ragcore.commands.auth --seed          # semua user REGISTRY, sandi default
+    python -m ragcore.commands.auth --seed          # semua KARYAWAN, sandi default lab2026
     python -m ragcore.commands.auth --set NCS-0001  # setel sandi satu user (ditanya)
     python -m ragcore.commands.auth --daftar        # lihat NIP yang punya sandi
 
@@ -19,7 +19,6 @@ import getpass
 import os
 
 from ragcore.domain import auth
-from ragcore.domain.users import REGISTRY
 
 
 # Pemilik tabel (bisa MENULIS). Default = kredensial pemilik lab; timpa lewat env
@@ -57,10 +56,15 @@ def _upsert(conn, nip: str, password: str) -> None:
 
 
 def _seed() -> None:
+    # Seed SEMUA karyawan (bukan hanya REGISTRY) supaya setiap orang di dropdown
+    # bisa login. Daftar diambil langsung dari tabel karyawan lewat koneksi admin.
     with auth._connect(_ADMIN) as conn:
-        for nip in REGISTRY:
+        cur = conn.cursor()
+        cur.execute("SELECT nip FROM ncs.karyawan")
+        nips = [r[0] for r in cur.fetchall()]
+        for nip in nips:
             _upsert(conn, nip, _SEED_PASSWORD)
-    print(f"Seed {len(REGISTRY)} user dengan sandi default "
+    print(f"Seed {len(nips)} karyawan dengan sandi default "
           f"(argon2id, hash per-user). Ganti per-user dengan --set.")
 
 
@@ -86,7 +90,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Kelola hash sandi per-user (argon2id).")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--seed", action="store_true",
-                   help="isi sandi default untuk semua user REGISTRY")
+                   help="isi sandi default untuk semua karyawan")
     g.add_argument("--set", metavar="NIP", help="setel sandi satu user (ditanya)")
     g.add_argument("--daftar", action="store_true", help="daftar NIP yang punya sandi")
     args = ap.parse_args()

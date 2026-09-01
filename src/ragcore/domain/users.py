@@ -127,11 +127,10 @@ def login(nip: str, password: str) -> User | None:
     """Kembalikan Pengguna bila NIP dan sandinya cocok, None bila tidak.
 
     Sandi diverifikasi terhadap hash argon2id PER-USER di database (lewat akun
-    hak-minimal rag_auth). Identitas nama/unit diambil LIVE dari ncs.karyawan;
-    PERAN (staf/pimpinan) dari direktori teruji REGISTRY - karena peran tak bisa
-    disimpulkan dari `golongan` (lihat is_reviewer & test_flow). NIP yang ada di
-    karyawan tapi belum di REGISTRY tetap boleh masuk, dengan peran staf
-    (fail-closed).
+    hak-minimal rag_auth). Identitas nama/unit/golongan diambil LIVE dari
+    ncs.karyawan. PERAN: dari direktori teruji REGISTRY bila ada (peran hasil
+    kurasi yang dipatok test_flow), selain itu diturunkan dari `golongan` -
+    supaya karyawan di luar REGISTRY tetap masuk dengan peran yang masuk akal.
     """
     key = (nip or "").strip().upper()
 
@@ -146,13 +145,54 @@ def login(nip: str, password: str) -> User | None:
     if ident is None:
         return None
     base = REGISTRY.get(key)
-    role = base.role if base else STAFF_ROLE
+    role = base.role if base else _role_from_golongan(ident.golongan)
     return User(key, ident.nama, ident.unit, role)
 
 
+# Golongan (jenjang kepegawaian) -> peran aplikasi. Direksi/Kepala Divisi/Manajer
+# dianggap PIMPINAN; sisanya STAF. CATATAN: REGISTRY boleh MENIMPA ini per-orang
+# (mis. Andini Manajer di-set staf untuk skenario HITL) - override menang.
+_GOLONGAN_PIMPINAN = frozenset({"direksi", "kepala divisi", "manajer"})
+
+
+def _role_from_golongan(golongan: str) -> str:
+    return (MANAGER_ROLE if (golongan or "").strip().lower() in _GOLONGAN_PIMPINAN
+            else STAFF_ROLE)
+
+
+# Cache daftar karyawan (dari Oracle). Diisi sekali per proses saat berhasil;
+# bila None (Oracle tak terjangkau) demo_users jatuh ke REGISTRY dan MENCOBA LAGI
+# panggilan berikutnya - jadi begitu Oracle hidup, dropdown lengkap.
+_karyawan_cache: list[User] | None = None
+
+
+def _karyawan_users() -> list[User] | None:
+    """Semua karyawan sebagai User (identitas live, peran REGISTRY-atau-golongan).
+    None bila Oracle tak terjangkau."""
+    from ragcore.domain import auth
+
+    rows = auth.list_karyawan()
+    if not rows:
+        return None
+    out = []
+    for nip, nama, unit, golongan in rows:
+        base = REGISTRY.get(nip)
+        role = base.role if base else _role_from_golongan(golongan)
+        out.append(User(nip, nama, unit, role))
+    return out
+
+
 def demo_users() -> list[User]:
-    """Semua users, diurutkan — untuk pemilih di ui kelas."""
-    return sorted(REGISTRY.values(), key=lambda p: (p.unit, p.name))
+    """Pemilih pengguna di UI - dimuat dari tabel karyawan Oracle (sumber
+    sebenarnya). Fallback ke REGISTRY bila Oracle tak terjangkau."""
+    if _verifier is not None:      # mode tes/stub (verifier disuntik) -> REGISTRY,
+        pool = list(REGISTRY.values())          # deterministik, tanpa Oracle
+    else:
+        global _karyawan_cache
+        if _karyawan_cache is None:
+            _karyawan_cache = _karyawan_users()
+        pool = _karyawan_cache if _karyawan_cache else list(REGISTRY.values())
+    return sorted(pool, key=lambda p: (p.unit, p.name))
 
 
 def is_reviewer(person: object) -> bool:

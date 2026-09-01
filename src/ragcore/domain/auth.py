@@ -51,6 +51,7 @@ class Identitas:
 
     nama: str
     unit: str
+    golongan: str = ""     # jenjang kepegawaian -> menentukan peran (users.py)
 
 
 # user/sandi@dsn - dsn bisa host:port/service (easy-connect).
@@ -93,15 +94,32 @@ def verify(nip: str, password: str) -> Identitas | None:
             except Argon2Error:
                 return None
             cur.execute(
-                "SELECT nama, unit FROM ncs.karyawan WHERE nip = :1", [nip])
+                "SELECT nama, unit, golongan FROM ncs.karyawan WHERE nip = :1",
+                [nip])
             ident = cur.fetchone()
             if not ident:
                 return None
-            return Identitas(nama=ident[0], unit=ident[1])
+            return Identitas(nama=ident[0], unit=ident[1], golongan=ident[2] or "")
     except Exception as e:
         # Sandi TIDAK ikut dicatat - hanya jenis galatnya, agar operator bisa
         # mendiagnosis (Oracle mati / rag_auth salah) tanpa membocorkan rahasia.
         log.warning("verifikasi sandi gagal-tertutup: %s", type(e).__name__)
+        return None
+
+
+def list_karyawan() -> list[tuple[str, str, str, str]] | None:
+    """Semua karyawan (nip, nama, unit, golongan) lewat akun hak-minimal
+    rag_auth. None bila Oracle tak terjangkau - pemanggil fallback ke daftar
+    di kode. Dipakai UI untuk mengisi dropdown pengguna dari SUMBER SEBENARNYA."""
+    from ragcore.settings.mcp import ORACLE_CONNECTION_AUTH
+
+    try:
+        with _connect(ORACLE_CONNECTION_AUTH) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT nip, nama, unit, golongan FROM ncs.karyawan")
+            return [(r[0], r[1], r[2], r[3] or "") for r in cur.fetchall()]
+    except Exception as e:
+        log.warning("daftar karyawan gagal diambil: %s", type(e).__name__)
         return None
 
 
