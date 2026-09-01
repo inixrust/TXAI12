@@ -44,5 +44,7 @@ tx-ai12.localhost {
 	}
 
 	# Streamlit memakai WebSocket - Caddy meneruskannya otomatis.
-	reverse_proxy host.docker.internal:8501
+	# Default menunjuk service 'app' (container). Bila app masih di HOST, timpa:
+	#   APP_UPSTREAM=host.docker.internal:8501 docker compose ... up -d caddy
+	reverse_proxy {$APP_UPSTREAM:app:8501}
 }

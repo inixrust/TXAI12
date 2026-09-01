@@ -8,7 +8,7 @@
 set -eu
 
 SEV="${SEV:-HIGH,CRITICAL}"
-IMAGES="${IMAGES:-caddy:2 openbao/openbao:latest}"
+IMAGES="${IMAGES:-caddy:2 openbao/openbao:latest txai12-app:latest}"
 
 for img in $IMAGES; do
   echo "======================= $img ($SEV) ======================="

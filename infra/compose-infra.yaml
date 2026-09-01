@@ -53,6 +53,7 @@ services:
   # --- Reverse proxy: satu-satunya yang menghadap keluar -------------------
   caddy:
     image: caddy:2
+    depends_on: [app]
     # Port HOST bisa ditimpa bila 80/443 sudah dipakai proses lain (mis. di
     # Docker Desktop, ingress k8s bawaan sudah memegang 80/443). Produksi pakai
     # default 80/443; lab bisa: CADDY_HTTP_PORT=8080 CADDY_HTTPS_PORT=8443 ...
@@ -76,23 +77,52 @@ services:
     mem_limit: 256m
     cpus: 0.5
 
-  # CATATAN: aplikasi (Streamlit/API) SAAT INI berjalan di HOST via venv - ia
-  # membaca OPENBAO_ADDR=http://127.0.0.1:8200 + OPENBAO_TOKEN dari bootstrap.
-  # Untuk isolasi penuh, kontainerkan app sebagai service di sini, taruh di
-  # jaringan backend (tanpa ports:), lalu Caddy -> app:8501 dan TUTUP port 8200.
-  # Mengontainerkan app butuh Dockerfile (termasuk SQLcl/Java untuk MCP Oracle)
-  # - itu langkah terpisah, lihat README.
+  # --- Aplikasi (Streamlit + ragcore), dikontainerkan ---------------------
+  # Menghapus "lompatan ke host": Caddy->app dan app->OpenBao/DB kini
+  # container->container. Tak ada `ports:` - hanya Caddy yang menjangkaunya.
+  app:
+    image: txai12-app:latest
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    depends_on:
+      openbao:
+        condition: service_started
+    environment:
+      RAG_ENV: production
+      OPENBAO_ADDR: http://openbao:8200
+      OPENBAO_TOKEN: ${OPENBAO_TOKEN:?set OPENBAO_TOKEN ke token app rag_auth-scoped}
+      # Rahasia VARIAN CONTAINER: alamat DB pakai nama container (pg-txai12,
+      # oracle-txai12), bukan localhost. Lihat secret/txai12-app di OpenBao.
+      OPENBAO_KV_PATH: secret/data/txai12-app
+      STORAGE: pgvector
+      MODEL_CHAT: ${MODEL_CHAT:-qwen3:4b}
+      # Ollama berjalan di HOST. Di Docker Desktop, container->host lewat
+      # host.docker.internal butuh aturan firewall; alternatif: jalankan ollama
+      # sebagai container. Timpa sesuai lingkungan.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    networks: [frontend, backend, dbnet]
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
 networks:
   frontend:                     # caddy <-> luar & app
+  # backend: openbao <-> app. Kini app DIKONTAINERKAN, jadi komunikasi
+  # app<->openbao sepenuhnya di dalam Docker. Bila port 8200 tak lagi di-publish
+  # ke host (host app pensiun), jaringan ini boleh 'internal: true' untuk
+  # memutus OpenBao dari internet sepenuhnya.
   backend:                      # openbao <-> app
-    # CATATAN: 'internal: true' MEMUTUS NAT - jaringan internal tak bisa
-    # mem-publish port ke host. Selama aplikasi masih di HOST, ia menjangkau
-    # OpenBao lewat port 8200 yang di-publish, jadi jaringan ini TIDAK bisa
-    # internal dulu. Setelah app dikontainerkan (openbao berhenti mem-publish
-    # 8200, komunikasi app<->openbao sepenuhnya di dalam Docker), AKTIFKAN:
-    #   internal: true
-    # untuk memutus OpenBao dari internet sepenuhnya.
+  dbnet:                        # app <-> Oracle & pgvector (jaringan bersama)
+    external: true
+    name: txai12-net
 
 volumes:
   openbao-data:

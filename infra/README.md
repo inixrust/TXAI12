@@ -30,11 +30,52 @@ deployment yang perlu langkah operasional di bawah.
 
 | Berkas | Guna |
 |---|---|
-| `compose-infra.yaml` | OpenBao + Caddy + jaringan tersegmentasi |
+| `compose-infra.yaml` | OpenBao + Caddy + **app** + jaringan tersegmentasi |
+| `Dockerfile` | Image aplikasi (Streamlit + ragcore + Java/SQLcl) |
 | `Caddyfile` | Reverse proxy: TLS, header keamanan, catatan rate limit |
-| `openbao/config.hcl` | OpenBao storage-file (persisten, bukan dev mode) |
+| `openbao/config.hcl` | OpenBao storage-raft (persisten, bukan dev mode) |
 | `openbao/txai12-policy.hcl` | Kebijakan **baca-saja** untuk token aplikasi |
 | `openbao/bootstrap.sh` | Aktifkan KV, tulis rahasia, buat policy + token app |
+| `openbao/backup.sh` | Snapshot raft OpenBao (backup) |
+| `scan.sh` | Pindai kerentanan image (Trivy) |
+
+## Aplikasi dikontainerkan (menghapus lompatan ke host)
+
+Awalnya app berjalan di HOST via venv, dan Caddy menjangkaunya lewat
+`host.docker.internal` — yang di Docker Desktop terganjal Windows Firewall.
+Kini app punya **image sendiri** (`infra/Dockerfile`) dan menjadi service `app`,
+jadi **Caddy→app dan app→OpenBao/DB semuanya container→container** — tanpa
+lompatan ke host, tanpa ganjalan firewall.
+
+```sh
+# 1) Bangun image (Streamlit + ragcore + Java/SQLcl; optional berat dilewati)
+docker build -f infra/Dockerfile -t txai12-app:latest .
+
+# 2) Jaringan bersama supaya app menjangkau DB dengan NAMA container
+docker network create txai12-net
+docker network connect txai12-net oracle-txai12
+docker network connect txai12-net pg-txai12
+
+# 3) Rahasia VARIAN CONTAINER: alamat DB pakai nama container (pg-txai12:5432,
+#    oracle-txai12:1521), BUKAN localhost. Tulis ke path terpisah:
+#      bao kv put secret/txai12-app PG_URL=...@pg-txai12:5432/... ORACLE_...=@oracle-txai12:1521/...
+#    (kebijakan txai12-read sudah mengizinkan path txai12-app)
+
+# 4) Jalankan seluruh stack (token app dari bootstrap)
+OPENBAO_TOKEN=<token> CADDY_HTTPS_PORT=8443 CADDY_HTTP_PORT=8080 \
+  docker compose -f infra/compose-infra.yaml up -d
+```
+
+**Sudah diuji end-to-end (container):** image 550 MB, app boot `RAG_ENV=production`
+**tanpa kredensial DB di env** (semua dari OpenBao path `txai12-app`),
+**Caddy TLS → app = HTTP 200** dengan header keamanan lengkap (HSTS/nosniff/
+frame/referrer), pgvector RLS via `dbnet` (TI 43 chunk), login argon2id via
+Oracle `dbnet`, dan Ollama di host terjangkau. Semua tanpa lompatan ke host.
+
+> **Token OpenBao & masa berlaku.** App membaca rahasia SEKALI saat start lalu
+> meng-cache. Token periodik yang tak diperbarui kedaluwarsa (mis. 1 jam) →
+> **restart** container setelah itu gagal mengambil rahasia. Untuk lab, pakai
+> `-period=24h`; solusi benar = AppRole + renew (endgame B).
 
 ## Cara kerja rahasia (env → OpenBao → default)
 
@@ -118,23 +159,18 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
   memegang 80/443 sehingga Caddy gagal mem-publish diam-diam. Timpa port host:
   `CADDY_HTTP_PORT=8080 CADDY_HTTPS_PORT=8443 docker compose -f
   infra/compose-infra.yaml up -d caddy`.
-- **Caddy → app di host (Docker Desktop).** Pakai `host.docker.internal` BAWAAN
-  Docker Desktop (IPv4) — JANGAN menimpanya dengan `extra_hosts: host-gateway`,
-  yang di sebagian versi resolve ke gateway IPv6 dan app (bind IPv4) tak
-  mendengar → 502. Bahkan setelah resolve IPv4 benar, **Windows Defender
-  Firewall memblokir koneksi container→host** secara bawaan, jadi Caddy tak bisa
-  menjangkau Streamlit di host sampai ditambah aturan inbound untuk vEthernet
-  Docker/WSL — ATAU (lebih baik, arah produksi) app dikontainerkan sehingga tak
-  ada lompatan ke host sama sekali. TLS Caddy sendiri sudah terbukti; lompatan
-  ke app inilah yang menunggu salah satu dari dua itu.
-- **App masih di host → jaringan belum `internal`.** Compose ini menjalankan
-  OpenBao + Caddy; aplikasi masih via venv di host, menjangkau OpenBao lewat
-  port 8200 yang di-publish dan dijangkau Caddy lewat `host.docker.internal`.
-  Karena `internal: true` memutus NAT (jaringan internal tak bisa mem-publish
-  port), jaringan `backend` **sengaja belum internal**. Untuk isolasi penuh
-  (OpenBao berhenti mem-publish 8200, app di `backend` internal), app perlu
-  dikontainerkan — termasuk SQLcl/Java untuk MCP Oracle — lalu aktifkan
-  `internal: true`. Itu langkah terpisah.
+- **Caddy → app (SUDAH DIKONTAINERKAN).** Dulu Caddy menjangkau app di host
+  lewat `host.docker.internal`, yang terganjal Windows Firewall (container→host).
+  Kini app adalah container: Caddy → `app:8501` container→container, terbukti
+  **HTTP 200** + header keamanan. Bila sengaja menjalankan app di host, timpa
+  target: `APP_UPSTREAM=host.docker.internal:8501` (dan sadari batas firewall).
+- **Ollama.** App menjangkau Ollama di host lewat `host.docker.internal:11434`
+  (di mesin uji ini terjangkau — Ollama membuka port-nya sendiri). Bila
+  firewall memblokirnya, jalankan Ollama sebagai container atau tambah aturan
+  inbound. Timpa `OLLAMA_BASE_URL` sesuai lingkungan.
+- **Isolasi jaringan penuh kini mungkin.** Karena app+OpenBao+DB semua di dalam
+  Docker, `backend` boleh dijadikan `internal: true` dan port 8200 ditutup
+  begitu host app pensiun — lihat komentar di `compose-infra.yaml`.
 
 ## Backup, hardening & pemindaian (sudah dikerjakan)
 
