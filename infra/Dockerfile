@@ -40,6 +40,11 @@ COPY .streamlit/ ./.streamlit/
 COPY testset.json testset_hybrid.json ./
 # Indeks korpus (potongan + BM25) dibutuhkan jalur retrieval saat runtime.
 COPY chunks.json ./
+# Dokumen sumber + PDF pindaian: UI menampilkan PRATINJAU halaman sumber
+# (citations.scanned_page merender halaman PDF pindaian) dan teks dokumen asli.
+# Tanpa ini, kartu sumber hanya menampilkan keterangan, bukan halaman scan.
+COPY documents/ ./documents/
+COPY scanned_documents/ ./scanned_documents/
 ENV PYTHONPATH=/app/src
 
 # Non-root.

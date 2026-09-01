@@ -14,9 +14,8 @@
 # Berat / tak diperlukan saat runtime container.
 tests
 docs
-*.pdf
-*.png
-*.jpg
-scans
-data
+incoming_documents
 infra/openbao/backups
+# CATATAN: JANGAN kecualikan *.pdf/*.png secara luas - berkas di
+# scanned_documents/ (PDF pindaian) DIBUTUHKAN UI untuk menampilkan pratinjau
+# halaman sumber (citations.scanned_page). documents/ juga dipakai jalur sitasi.
