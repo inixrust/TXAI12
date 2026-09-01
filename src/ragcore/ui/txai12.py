@@ -306,16 +306,28 @@ def _verify_source(d) -> None:
     m = d.metadata
     quote = citations.original_content(d)
 
+    # Ada BERKAS PDF halamannya? Dua sumber punya ini: pindaian kurasi
+    # (ekstraksi=vlm) DAN PDF yang DIUNGGAH pengguna (ekstraksi bisa 'teks'
+    # bila PDF-nya sudah berlapis-teks). Untuk keduanya, tampilkan GAMBAR
+    # halaman yang PERSIS jadi sumber - verifikasi paling jujur, dan inilah
+    # yang diharapkan saat mengunggah PDF: "tampilkan PDF-nya", bukan cuma
+    # teks. Keputusan digantung pada BISA-tidaknya halaman dirender
+    # (scanned_page != None), BUKAN pada cara ekstraksinya - itulah yang dulu
+    # membuat PDF unggahan berlapis-teks jatuh ke jalur "berkas asli di
+    # documents/" dan tak pernah menampilkan PDF-nya.
+    image = citations.scanned_page(m)
+    if image is not None:
+        st.caption("Halaman PDF sumber — periksa bahwa kutipannya memang ada:")
+        st.image(image, use_container_width=True)
+        st.caption("Teks yang terbaca dari halaman ini:")
+        st.text(quote[:1200])
+        return
+
+    # Ditandai hasil VLM tapi berkas pindaiannya tak ditemukan lagi: tak ada
+    # "teks asli" untuk disorot, jadi tampilkan apa yang model baca.
     if m.get("ekstraksi") == "vlm":
-        image = citations.scanned_page(m)
-        if image is not None:
-            st.caption("Halaman PINDAIAN yang dibaca model — periksa bacaannya:")
-            st.image(image, use_container_width=True)
-            st.caption("Teks yang model baca dari halaman ini:")
-            st.text(quote[:1200])
-        else:
-            st.caption("Pindaian tak ditemukan; yang dibaca model:")
-            st.text(quote[:1200])
+        st.caption("Pindaian tak ditemukan; yang dibaca model:")
+        st.text(quote[:1200])
         return
 
     text, remark = citations.original_page(m)
