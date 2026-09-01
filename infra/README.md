@@ -167,7 +167,8 @@ RAG_ENV=production OPENBAO_ADDR=http://127.0.0.1:8200 OPENBAO_TOKEN=<token> \
 - **Semua UI web via HTTPS (satu gerbang Caddy).** Caddy menerminasi TLS untuk
   ketiganya; tak ada UI yang lagi diakses HTTP polos dari browser:
   - `https://tx-ai12.localhost` → aplikasi (Streamlit)
-  - `https://langfuse.localhost` → Langfuse (Caddy ikut jaringan `langfuse_default`)
+  - `https://langfuse.localhost` → Langfuse (project `txai12-observer`; Caddy ikut
+    jaringan `txai12-observer_default`)
   - `https://openbao.localhost` → OpenBao UI + API (jaringan `backend`)
 
   Diuji di browser: OpenBao (Sign in 2.6.1) & Langfuse (Sign in, host HTTPS

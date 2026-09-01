@@ -33,7 +33,8 @@ tx-ai12.localhost {
 }
 
 # --- Langfuse (observability) ------------------------------------------------
-# Caddy harus se-jaringan dengan stack Langfuse (langfuse_default) - lihat compose.
+# Caddy harus se-jaringan dengan stack Langfuse (project txai12-observer ->
+# jaringan txai12-observer_default) - lihat lfnet di compose-infra.yaml.
 # Catatan: login Langfuse mungkin perlu NEXTAUTH_URL=https://langfuse.localhost
 # di stack Langfuse-nya; halaman tetap terbuka via HTTPS tanpa itu.
 langfuse.localhost {

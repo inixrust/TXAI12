@@ -177,9 +177,9 @@ networks:
   dbnet:                        # app <-> Oracle & pgvector (jaringan bersama)
     external: true
     name: txai12-net
-  lfnet:                        # caddy -> Langfuse (stack terpisah) untuk TLS
+  lfnet:                        # caddy -> Langfuse (project txai12-observer) untuk TLS
     external: true
-    name: langfuse_default
+    name: txai12-observer_default
 
 volumes:
   openbao-data:
