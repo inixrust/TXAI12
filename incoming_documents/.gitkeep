@@ -1,0 +1,2 @@
+Folder unggahan pengguna (bind-mount ke /app/incoming_documents di container).
+Isi TIDAK di-commit (data pengguna); folder ini dipertahankan lewat .gitkeep.

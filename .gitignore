@@ -20,7 +20,12 @@ venv/
 
 # artefak runtime lab (dibuat ulang, tak perlu di-track)
 chroma_db/
-incoming_documents/
+# Dokumen unggahan pengguna: ISINYA tak di-track (data pengguna), tetapi
+# FOLDER-nya dipertahankan lewat .gitkeep supaya target bind-mount compose
+# sudah ada saat fresh clone (kalau tak ada, Docker membuatnya root-owned dan
+# app uid 10001 gagal menulis).
+incoming_documents/*
+!incoming_documents/.gitkeep
 *.vlm.txt
 evaluation-result.json
 evaluation-history.json
