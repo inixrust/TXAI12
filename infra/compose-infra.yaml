@@ -139,6 +139,10 @@ services:
       OPENBAO_DB_ROLE: ${OPENBAO_DB_ROLE:-}
       STORAGE: pgvector
       MODEL_CHAT: ${MODEL_CHAT:-qwen3:4b}
+      # Batas waktu keseluruhan satu run agent (banyak panggilan model). Default
+      # 120s pas untuk qwen3:4b; model lebih besar/lambat (mis. qwen3:8b yang
+      # tumpah ke CPU di VRAM 6 GB) butuh lebih - naikkan lewat .env.
+      AGENT_TIMEOUT_DETIK: ${AGENT_TIMEOUT_DETIK:-120}
       # Ollama berjalan di HOST. Di Docker Desktop, container->host lewat
       # host.docker.internal butuh aturan firewall; alternatif: jalankan ollama
       # sebagai container. Timpa sesuai lingkungan.
