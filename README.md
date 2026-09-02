@@ -64,6 +64,51 @@ itu bisa dilewati tanpa ada yang menyadarinya.
 
 ---
 
+## Akses & UI — membuka layanan yang berjalan
+
+Stack berjalan sebagai dua project Docker: **`txai12`** (app + DB + OpenBao +
+Caddy) dan **`txai12-observer`** (Langfuse). Aturan mainnya:
+
+- **Semua UI web hanya lewat gerbang Caddy TLS di `*.localhost:8443`.** Port
+  HTTP mentah (Streamlit `8501`, OpenBao `8200`, Langfuse `3000`) DITUTUP.
+- `*.localhost` otomatis menunjuk `127.0.0.1` di browser modern; untuk `curl`
+  pakai `--resolve <host>:8443:127.0.0.1 -k`.
+- Port `8443` (bukan 443) karena 80/443 dipegang ingress k8s Docker Desktop.
+- CA internal Caddy → browser menampilkan *"Your connection is not private"* →
+  **Advanced → Proceed** (percayai root CA sekali untuk menghilangkannya).
+
+### Punya UI web (buka di browser)
+
+| Layanan | UI-nya | URL | Login |
+|---|---|---|---|
+| **Aplikasi TX-AI12** | Streamlit (Tanya/Konsultasi/Agent/Unggah) | `https://tx-ai12.localhost:8443` | pilih NIP + sandi `lab2026` |
+| **Langfuse** | Dashboard observability (traces/generations) | `https://langfuse.localhost:8443` | `instruktur@lab.local` / `lab2026lab2026` |
+| **OpenBao** | Web UI secret manager (KV, AppRole) | `https://openbao.localhost:8443/ui` | metode **Token** (AppRole/root) |
+| **MinIO Console** | Object browser (media Langfuse) | `https://minio-console.localhost:8443` | `minio` / `miniosecret` |
+| **MinIO S3 API** | endpoint S3 (bukan UI) | `https://minio.localhost:8443` | dipakai otomatis presigned URL Langfuse |
+
+### Database — TIDAK punya UI web, akses via klien SQL
+
+PostgreSQL & Oracle tak punya UI bawaan; pakai klien (DBeaver, SQL Developer,
+pgAdmin, `psql`, SQLcl):
+
+| DB | Alamat host | Akun (sandi) | Contoh |
+|---|---|---|---|
+| **Oracle** | `localhost:1521/FREEPDB1` | `ncs`, `rag_baca`, `rag_operator`, `rag_auth`, `system` — `Rahasia_Lab_2026` | `sql ncs/Rahasia_Lab_2026@localhost:1521/FREEPDB1` |
+| **pgvector** | `localhost:6024/korpus` | `rag`/`rahasia_lab` (pemilik), `rag_app`/`rahasia_app` (RLS) | `psql "postgresql://rag:rahasia_lab@localhost:6024/korpus"` |
+
+### Hanya internal (tak menghadap host)
+
+Streamlit `8501`, OpenBao `8200`, Langfuse-web `3000` (hanya lewat Caddy); DB
+internal Langfuse yang `localhost`-only — Postgres `5432`, ClickHouse
+`8123`/`9000`, Redis `6379` (milik Langfuse, jangan diutak-atik).
+
+> Peta akses lengkap + cara CLI (OpenBao `bao`, perintah `ragcore`) ada di
+> [`runbook/AKSES.md`](runbook/AKSES.md). Semua sandi di atas **default lab** —
+> wajib diganti untuk produksi.
+
+---
+
 ## Alur lima hari
 
 ### Hari 1 — dokumen yang tak terbaca
